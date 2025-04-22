@@ -1,8 +1,8 @@
 # ExTermbox
 
-[![Hex.pm](https://img.shields.io/hexpm/v/ex_termbox.svg)](https://hex.pm/packages/ex_termbox)
-[![Hexdocs.pm](https://img.shields.io/badge/api-hexdocs-brightgreen.svg)](https://hexdocs.pm/ex_termbox)
-[![Travis CI](https://img.shields.io/travis/ndreynolds/ex_termbox/master.svg)](https://travis-ci.org/ndreynolds/ex_termbox)
+[![Hex.pm](https://img.shields.io/hexpm/v/rex_termbox.svg)](https://hex.pm/packages/rex_termbox)
+[![Hexdocs.pm](https://img.shields.io/badge/api-hexdocs-brightgreen.svg)](https://hexdocs.pm/rex_termbox)
+[![Travis CI](https://img.shields.io/travis/ndreynolds/rex_termbox/master.svg)](https://travis-ci.org/ndreynolds/rex_termbox)
 
 Low-level [termbox](https://github.com/nsf/termbox) bindings for Elixir.
 
@@ -10,7 +10,7 @@ For high-level, declarative terminal UIs in Elixir, see
 [Ratatouille](https://github.com/ndreynolds/ratatouille). It builds on top of
 this library and the termbox API to provide an HTML-like DSL for defining views.
 
-For the API Reference, see: [https://hexdocs.pm/ex_termbox](https://hexdocs.pm/ex_termbox).
+For the API Reference, see: [https://hexdocs.pm/rex_termbox](https://hexdocs.pm/rex_termbox).
 
 ## Getting Started
 
@@ -18,16 +18,16 @@ For the API Reference, see: [https://hexdocs.pm/ex_termbox](https://hexdocs.pm/e
 
 ExTermbox implements the termbox API functions via NIFs:
 
-* [`ExTermbox.Bindings`](https://hexdocs.pm/ex_termbox/ExTermbox.Bindings.html)
-  * [`init/0`](https://hexdocs.pm/ex_termbox/ExTermbox.Bindings.html#init/0)
-  * [`shutdown/0`](https://hexdocs.pm/ex_termbox/ExTermbox.Bindings.html#shutdown/0)
-  * [`width/0`](https://hexdocs.pm/ex_termbox/ExTermbox.Bindings.html#width/0)
-  * [`height/0`](https://hexdocs.pm/ex_termbox/ExTermbox.Bindings.html#height/0)
-  * [`clear/0`](https://hexdocs.pm/ex_termbox/ExTermbox.Bindings.html#clear/0)
-  * [`present/0`](https://hexdocs.pm/ex_termbox/ExTermbox.Bindings.html#present/0)
-  * [`put_cell/1`](https://hexdocs.pm/ex_termbox/ExTermbox.Bindings.html#put_cell/1)
-  * [`change_cell/5`](https://hexdocs.pm/ex_termbox/ExTermbox.Bindings.html#change_cell/5)
-  * [`poll_event/1`](https://hexdocs.pm/ex_termbox/ExTermbox.Bindings.html#poll_event/1)
+- [`ExTermbox.Bindings`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html)
+  - [`init/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#init/0)
+  - [`shutdown/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#shutdown/0)
+  - [`width/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#width/0)
+  - [`height/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#height/0)
+  - [`clear/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#clear/0)
+  - [`present/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#present/0)
+  - [`put_cell/1`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#put_cell/1)
+  - [`change_cell/5`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#change_cell/5)
+  - [`poll_event/1`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#poll_event/1)
 
 ### Hello World
 
@@ -37,13 +37,13 @@ To follow along, clone this repo and edit the example.
 This repository makes use of [Git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules), so make sure you include them in your clone. In recent versions of git, this can be accomplished by including the `--recursive` flag, e.g.
 
 ```bash
-git clone --recursive git@github.com:ndreynolds/ex_termbox.git
+git clone --recursive git@github.com:ndreynolds/rex_termbox.git
 ```
 
 When the clone is complete, the `c_src/termbox/` directory should have files in it.
 
 You can also create an
-Elixir script in any Mix project with `ex_termbox` in the dependencies list.
+Elixir script in any Mix project with `rex_termbox` in the dependencies list.
 Later, we'll run the example with `mix run <file>`.
 
 In a real project, you'll probably want to use an OTP application with a proper
@@ -131,12 +131,13 @@ You shuld see the text we rendered and be able to quit with 'q'.
 
 ### From Hex
 
-Add ExTermbox as a dependency in your project's `mix.exs`:
+Add ExTermbox (or specifically, the `rrex_termbox` fork) as a dependency in your project's `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:ex_termbox, "~> 0.3"}
+    # {:rex_termbox, "~> 0.3"} # Original version
+    {:rrex_termbox, "~> 1.0.3"} # @hydepwns updated fork
   ]
 end
 ```
@@ -154,8 +155,8 @@ an issue if you encounter any problems with the build.
 To try out the master branch, first clone the repo:
 
 ```bash
-git clone --recurse-submodules https://github.com/ndreynolds/ex_termbox.git
-cd ex_termbox
+git clone --recurse-submodules https://github.com/ndreynolds/rex_termbox.git
+cd rex_termbox
 ```
 
 The `--recurse-submodules` flag (`--recursive` before Git 2.13) is necessary in

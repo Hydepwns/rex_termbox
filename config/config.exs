@@ -12,11 +12,11 @@ config :logger, level: :debug
 
 # You can configure your application as:
 #
-#     config :ex_termbox, key: :value
+#     config :rex_termbox, key: :value
 #
 # and access this configuration in your application as:
 #
-#     Application.get_env(:ex_termbox, :key)
+#     Application.get_env(:rex_termbox, :key)
 #
 # You can also configure a 3rd-party app:
 #

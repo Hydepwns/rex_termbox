@@ -8,15 +8,19 @@ ifeq ($(CROSSCOMPILE),)
     # Normal build. Set shared library flags according to the platform.
     ifeq ($(shell uname),Darwin)
 	LDFLAGS += -dynamiclib -undefined dynamic_lookup
+        CFLAGS += -arch arm64 # Explicitly set arch for Apple Silicon
+        LDFLAGS += -arch arm64 # Explicitly set arch for Apple Silicon
     endif
     ifeq ($(shell uname -s),Linux)
         LDFLAGS += -fPIC -shared
         CFLAGS += -fPIC
+        CFLAGS += -g
     endif
 else
     # Crosscompiled build. Assume Linux flags
     LDFLAGS += -fPIC -shared
     CFLAGS += -fPIC
+    CFLAGS += -g
 endif
 
 NIF_CFLAGS += -I$(ERTS_INCLUDE_DIR) -I$(TERMBOX_PATH)/src
@@ -30,7 +34,7 @@ all: $(PREFIX)/termbox_bindings.so
 	@:
 
 $(TERMBOX_BUILD)/src/libtermbox.%: $(TERMBOX_BUILD)
-	cd $(TERMBOX_PATH) && CFLAGS="$(CFLAGS)" ./waf configure --prefix=. -o $(TERMBOX_BUILD) && ./waf
+	cd $(TERMBOX_PATH) && ARCHFLAGS="-arch $(shell uname -m)" CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)" ./waf configure --prefix=. -o $(TERMBOX_BUILD) && ./waf build install
 
 $(PREFIX)/termbox_bindings.so: $(SOURCES) $(PREFIX)
 	$(CC) $(CFLAGS) $(NIF_CFLAGS) $(LDFLAGS) -o $@ $(SOURCES)

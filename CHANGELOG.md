@@ -54,7 +54,7 @@ new API manages a single long-lived polling thread.
 ### Added
 - Support for sending the event manager `%Event{}` structs in addition to the
   tuple form that the NIF sends. This provides a convenient way to trigger
-  events manually when testing an ex_termbox application.
+  events manually when testing an rex_termbox application.
 
 ## [0.3.4] - 2019-02-03
 ### Added

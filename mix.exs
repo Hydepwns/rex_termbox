@@ -3,8 +3,8 @@ defmodule ExTermbox.Mixfile do
 
   def project do
     [
-      app: :ex_termbox,
-      version: "1.0.2",
+      app: :rrex_termbox,
+      version: "1.0.3",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
       compilers: [:elixir_make | Mix.compilers()],
@@ -17,9 +17,10 @@ defmodule ExTermbox.Mixfile do
 
       # Docs
       name: "ExTermbox",
-      source_url: "https://github.com/ndreynolds/ex_termbox",
+      source_url: "https://github.com/hydepwns/rex_termbox",
       docs: [
-        extras: ["README.md"]
+        extras: ["README.md"],
+        #   skip_undefined_reference_warnings_on: []
       ]
     ]
   end
@@ -51,15 +52,14 @@ defmodule ExTermbox.Mixfile do
         c_src/termbox/**/wscript
         c_src/termbox/waf
         lib
-        priv/.keep
         Makefile
         mix.exs
         README.md
         LICENSE
       ),
-      maintainers: ["Nick Reynolds"],
+      maintainers: ["DROO AMOR"],
       licenses: ["MIT"],
-      links: %{"GitHub" => "https://github.com/ndreynolds/ex_termbox"}
+      links: %{"GitHub" => "https://github.com/hydepwns/rex_termbox"}
     ]
   end
 
