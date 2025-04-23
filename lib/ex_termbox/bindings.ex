@@ -71,7 +71,7 @@ defmodule ExTermbox.Bindings do
   @on_load :load_nifs
 
   def load_nifs do
-    case :code.priv_dir(:rex_termbox) do
+    case :code.priv_dir(:rrex_termbox) do
       {:error, _} = err ->
         err
 

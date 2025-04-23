@@ -1,16 +1,14 @@
-# ExTermbox
+# Raxol Revived ExTermbox
 
-[![Hex.pm](https://img.shields.io/hexpm/v/rex_termbox.svg)](https://hex.pm/packages/rex_termbox)
-[![Hexdocs.pm](https://img.shields.io/badge/api-hexdocs-brightgreen.svg)](https://hexdocs.pm/rex_termbox)
-[![Travis CI](https://img.shields.io/travis/ndreynolds/rex_termbox/master.svg)](https://travis-ci.org/ndreynolds/rex_termbox)
+[![Hex.pm](https://img.shields.io/hexpm/v/rrex_termbox.svg)](https://hex.pm/packages/rrex_termbox)
+[![Hexdocs.pm](https://img.shields.io/badge/api-hexdocs-brightgreen.svg)](https://hexdocs.pm/rrex_termbox)
 
 Low-level [termbox](https://github.com/nsf/termbox) bindings for Elixir.
 
-For high-level, declarative terminal UIs in Elixir, see
-[Ratatouille](https://github.com/ndreynolds/ratatouille). It builds on top of
+For high-level, declarative terminal UIs in Elixir, see [raxol](https://github.com/Hydepwns/raxol) or it's predecessor [Ratatouille](https://github.com/ndreynolds/ratatouille). It builds on top of
 this library and the termbox API to provide an HTML-like DSL for defining views.
 
-For the API Reference, see: [https://hexdocs.pm/rex_termbox](https://hexdocs.pm/rex_termbox).
+For the API Reference, see: [https://hexdocs.pm/rrex_termbox](https://hexdocs.pm/rrex_termbox).
 
 ## Getting Started
 
@@ -18,16 +16,16 @@ For the API Reference, see: [https://hexdocs.pm/rex_termbox](https://hexdocs.pm/
 
 ExTermbox implements the termbox API functions via NIFs:
 
-- [`ExTermbox.Bindings`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html)
-  - [`init/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#init/0)
-  - [`shutdown/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#shutdown/0)
-  - [`width/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#width/0)
-  - [`height/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#height/0)
-  - [`clear/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#clear/0)
-  - [`present/0`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#present/0)
-  - [`put_cell/1`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#put_cell/1)
-  - [`change_cell/5`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#change_cell/5)
-  - [`poll_event/1`](https://hexdocs.pm/rex_termbox/ExTermbox.Bindings.html#poll_event/1)
+- [`ExTermbox.Bindings`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html)
+  - [`init/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#init/0)
+  - [`shutdown/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#shutdown/0)
+  - [`width/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#width/0)
+  - [`height/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#height/0)
+  - [`clear/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#clear/0)
+  - [`present/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#present/0)
+  - [`put_cell/1`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#put_cell/1)
+  - [`change_cell/5`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#change_cell/5)
+  - [`poll_event/1`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#poll_event/1)
 
 ### Hello World
 
@@ -37,13 +35,14 @@ To follow along, clone this repo and edit the example.
 This repository makes use of [Git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules), so make sure you include them in your clone. In recent versions of git, this can be accomplished by including the `--recursive` flag, e.g.
 
 ```bash
-git clone --recursive git@github.com:ndreynolds/rex_termbox.git
+# Make sure to clone *this* repository recursively to include submodules
+git clone --recursive <your-fork-url>
 ```
 
 When the clone is complete, the `c_src/termbox/` directory should have files in it.
 
 You can also create an
-Elixir script in any Mix project with `rex_termbox` in the dependencies list.
+Elixir script in any Mix project with `rrex_termbox` in the dependencies list.
 Later, we'll run the example with `mix run <file>`.
 
 In a real project, you'll probably want to use an OTP application with a proper
@@ -122,16 +121,26 @@ like---e.g., render different content, switch tabs, resize content, etc.
 Finally, run the example like this:
 
 ```bash
-$ mix run examples/hello_world.exs
+mix run examples/hello_world.exs
 ```
 
 You shuld see the text we rendered and be able to quit with 'q'.
+
+## Python Build Compatibility (Python 3.12+)
+
+The version of the `termbox` C library bundled with `:rrex_termbox` v1.0.3 uses an older version of the `waf` build system. This version of `waf` contained code (`import imp`) that is incompatible with Python 3.12 and newer, causing the NIF compilation to fail if a modern Python version is your system default.
+
+This fork includes a small patch directly within the bundled `waf` scripts (`c_src/termbox/.waf3-2.0.14-e67604cd8962dbdaf7c93e0d7470ef5b/waflib/Context.py`) to replace the incompatible code with its modern equivalent (`importlib`).
+
+With this patch, `:rrex_termbox` should compile successfully using Python 3.12+ without requiring manual intervention or downgrading Python.
+
+If you encounter build issues related to Python or `waf`, please ensure you are using a version of this library that includes this fix.
 
 ## Installation
 
 ### From Hex
 
-Add ExTermbox (or specifically, the `rrex_termbox` fork) as a dependency in your project's `mix.exs`:
+Add `:rrex_termbox` as a dependency in your project's `mix.exs`:
 
 ```elixir
 def deps do
@@ -143,8 +152,8 @@ end
 ```
 
 The Hex package bundles a compatible version of termbox. There are some compile
-hooks to automatically build and link a local copy of `ltermbox` for your
-application. This should happen the first time you build ExTermbox (e.g., via
+hooks to automatically build and link a local copy of `termbox` for your
+application. This should happen the first time you build :rrex_termbox (e.g., via
 `mix deps.compile`).
 
 So far the build has been tested on macOS and a few Linux distros. Please add
@@ -155,8 +164,9 @@ an issue if you encounter any problems with the build.
 To try out the master branch, first clone the repo:
 
 ```bash
-git clone --recurse-submodules https://github.com/ndreynolds/rex_termbox.git
-cd rex_termbox
+# Make sure to clone *this* repository recursively to include submodules
+git clone --recurse-submodules <your-fork-url>
+cd rrex_termbox # Assuming the directory name matches the repo
 ```
 
 The `--recurse-submodules` flag (`--recursive` before Git 2.13) is necessary in
@@ -177,3 +187,13 @@ mix run examples/event_viewer.exs
 
 If you see the application drawn and can trigger events, you're good to go. Use
 'q' to quit the examples.
+
+## Distribution
+
+Building a standalone executable for applications using `:rrex_termbox` requires some special consideration due to the included NIF (Native Implemented Function) for the `termbox` C library.
+
+Standard Elixir tools like `escript` are **not** suitable because they do not correctly package the necessary shared object (`.so`) file located in the `priv/` directory.
+
+The recommended approach for creating distributable releases is to use **[Distillery](https://github.com/bitwalker/distillery)** or the built-in Elixir **[Releases](https://hexdocs.pm/mix/Mix.Tasks.Release.html)**. These tools are designed to handle NIFs correctly and will package your application along with the Erlang Runtime System (ERTS) and the compiled `termbox` NIF into a self-contained bundle.
+
+Consult the documentation for Distillery or Elixir Releases for specific instructions on configuring your project for release builds.

@@ -27,14 +27,15 @@ defmodule ExTermbox.Mixfile do
 
   # Run "mix help compile.app" to learn about applications.
   def application do
-    [extra_applications: [:logger]]
+    [extra_applications: [:logger, :rrex_termbox]]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
       {:elixir_make, "~> 0.6", runtime: false},
-      {:ex_doc, "~> 0.19", only: :dev, runtime: false},
+      {:earmark_parser, "~> 1.4"},
+      {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:dialyze, "~> 0.2.0", only: :dev},
       {:credo, "~> 1.0", only: [:dev, :test], runtime: false}
     ]
