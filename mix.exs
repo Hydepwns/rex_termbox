@@ -17,7 +17,7 @@ defmodule ExTermbox.Mixfile do
 
       # Docs
       name: "ExTermbox",
-      source_url: "https://github.com/hydepwns/rex_termbox",
+      source_url: "https://github.com/hydepwns/rrex_termbox",
       docs: [
         extras: ["README.md"],
         #   skip_undefined_reference_warnings_on: []
@@ -60,7 +60,7 @@ defmodule ExTermbox.Mixfile do
       ),
       maintainers: ["DROO AMOR"],
       licenses: ["MIT"],
-      links: %{"GitHub" => "https://github.com/hydepwns/rex_termbox"}
+      links: %{"GitHub" => "https://github.com/hydepwns/rrex_termbox"}
     ]
   end
 
