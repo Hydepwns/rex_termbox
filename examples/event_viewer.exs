@@ -36,9 +36,9 @@ defmodule EventViewer do
   def render_header do
     render_lines(
       [
-        'ExTermbox Event Viewer',
-        '',
-        '(Click, resize, or press a key to see event diagnostics. <q> to quit.)'
+        ~c"ExTermbox Event Viewer",
+        ~c"",
+        ~c"(Click, resize, or press a key to see event diagnostics. <q> to quit.)"
       ],
       0
     )
@@ -63,14 +63,14 @@ defmodule EventViewer do
 
     render_lines(
       [
-        '  Type: ' ++ format(type) ++ ' ' ++ format(type_name),
-        '   Mod: ' ++ format(mod),
-        '   Key: ' ++ format(key) ++ ' ' ++ format(key_name),
-        '  Char: ' ++ format(ch) ++ ' ' ++ format(<<ch::utf8>>),
-        ' Width: ' ++ format(w),
-        'Height: ' ++ format(h),
-        '     X: ' ++ format(x),
-        '     Y: ' ++ format(y)
+        ~c"  Type: " ++ format(type) ++ ~c" " ++ format(type_name),
+        ~c"   Mod: " ++ format(mod),
+        ~c"   Key: " ++ format(key) ++ ~c" " ++ format(key_name),
+        ~c"  Char: " ++ format(ch) ++ ~c" " ++ format(<<ch::utf8>>),
+        ~c" Width: " ++ format(w),
+        ~c"Height: " ++ format(h),
+        ~c"     X: " ++ format(x),
+        ~c"     Y: " ++ format(y)
       ],
       4
     )
