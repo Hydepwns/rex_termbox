@@ -1,76 +1,112 @@
 defmodule ExTermbox.ProcessManager do
-  require Logger
+require Logger
 
-  @doc """
-  Uses Port.open to start the C port process.
+@moduledoc """
+Manages the lifecycle of the C helper process and the PortHandler GenServer.
 
-  Opts: [:binary, :exit_status, :nouse_stdio]
-  - :binary - data is sent/received as binaries
-  - :exit_status - receive a message when the port exits
-  - :nouse_stdio - prevent port from interacting with group leader stdio
-  """
-  def spawn_port(command, _args \\ [], opts \\ []) do
-    default_opts = [
-      # Data as binaries
-      :binary,
-      # Get exit status message
-      :exit_status
-    ]
+Provides functions to:
+- Spawn the Port process (`spawn_port_process/2`)
+- Connect to the socket exposed by the C helper (`connect_socket/1`)
+- Send commands to the C helper via the Port (`send_command_to_port/2`)
+- Manage the socket connection (`manage_socket_connection/1`)
+"""
 
-    merged_opts = Keyword.merge(default_opts, opts)
+@default_connect_timeout 5000 # Default timeout for socket connection in ms
 
-    # Use original command directly
-    Logger.debug(
-      "ProcessManager: Spawning port process with command: #{command}, opts: #{inspect(merged_opts)}"
-    )
+@doc """
+Uses Port.open to start the C port process.
 
-    Port.open({:spawn, command}, merged_opts)
+Opts: [:binary, :exit_status, :nouse_stdio]
+- :binary - data is sent/received as binaries
+- :exit_status - receive a message when the port exits
+- :nouse_stdio - prevent port from interacting with group leader stdio
+"""
+def spawn_port(command, _args \\ [], opts \\ []) do
+  default_opts = [
+    # Data as binaries
+    :binary,
+    # Get exit status message
+    :exit_status
+  ]
+
+  merged_opts = Keyword.merge(default_opts, opts)
+
+  # Use original command directly
+  Logger.debug(
+    "ProcessManager: Spawning port process with command: #{command}, opts: #{inspect(merged_opts)}"
+  )
+
+  # Port.open returns the port on success or raises on error.
+  # We need to catch potential errors and return {:error, reason}.
+  try do
+    port = Port.open({:spawn, command}, merged_opts)
+    {:ok, port}
+  rescue
+    e in ErlangError ->
+      Logger.error("ProcessManager: Failed to spawn port process: #{inspect(e)}")
+      {:error, e}
   end
+end
 
-  @doc "Uses Port.command to send data to the port process."
-  def command_port(port, data) do
-    Logger.debug(
-      "ProcessManager: Sending command to port #{inspect(port)} (payload length: #{byte_size(data)}): #{inspect(data)}"
-    )
+@doc "Uses Port.command to send data to the port process."
+def command_port(port, data) do
+  Logger.debug(
+    "ProcessManager: Sending command to port #{inspect(port)} (payload length: #{byte_size(data)}): #{inspect(data)}"
+  )
 
-    Port.command(port, data)
+  Port.command(port, data)
+end
+
+@doc "Uses Port.close to close the port."
+def close_port(port) do
+  Logger.debug("ProcessManager: Closing port #{inspect(port)}")
+  # The process calling close must be the 'connected' process for the port.
+  # If PortHandler owns the port, this should be fine.
+  Port.close(port)
+end
+
+@doc """
+Connects to a Unix Domain Socket at the given path.
+"""
+@spec connect_socket(Path.t(), pos_integer()) :: {:ok, :socket.socket()} | {:error, any()}
+def connect_socket(path, timeout \\ @default_connect_timeout) do
+  # Convert path charlist (e.g., ~c"/tmp/socket.sock") to binary for :gen_tcp
+  binary_path = to_string(path)
+  address = {:local, binary_path}
+  # Options: Use local domain, binary mode, passive (active: false)
+  opts = [:local, :binary, active: false]
+
+  Logger.debug("ProcessManager: Attempting to connect to UDS #{inspect(binary_path)} with timeout #{timeout}ms using :gen_tcp")
+
+  # Use :gen_tcp.connect for UDS
+  case :gen_tcp.connect(address, 0, opts, timeout) do
+    {:ok, socket} ->
+      Logger.info("Socket connected successfully via :gen_tcp to #{inspect(binary_path)}")
+      # The socket returned by gen_tcp should already be configured based on opts.
+      {:ok, socket}
+
+    {:error, reason} ->
+      Logger.error("Failed to connect socket via :gen_tcp to #{inspect(binary_path)}: #{inspect(reason)}")
+      # No socket descriptor to close if connect fails
+      {:error, {:connect_failed, reason}}
   end
+end
 
-  @doc "Uses Port.close to close the port."
-  def close_port(port) do
-    Logger.debug("ProcessManager: Closing port #{inspect(port)}")
-    # The process calling close must be the 'connected' process for the port.
-    # If PortHandler owns the port, this should be fine.
-    Port.close(port)
-  end
+@doc "Uses :socket.send for sending data over the UDS."
+def send_socket(socket, data) do
+  Logger.debug(
+    "ProcessManager: Sending to socket (via :socket.send): #{inspect(data)}"
+  )
 
-  @doc "Uses :socket.connect for connecting to the UDS path."
-  def connect_socket(path, caller_opts \\ []) do
-    # path is expected to be a charlist here (e.g., '/tmp/termbox_test.sock')
-    # path_binary = :erlang.list_to_binary(path) # REMOVE conversion to binary
-    # :socket address format for local domain
-    address = {:local, path} # CHANGE: Use the charlist path directly
+  # Use :socket.send which works with sockets from :socket.connect for TCP/UDS
+  :socket.send(socket, data)
+end
 
-    # Translate :gen_tcp style opts to :socket style
-    base_opts = [mode: :binary, active: true]
-    # Filter out :local if present in caller_opts, as it's handled by the address tuple
-    filtered_caller_opts = Keyword.drop(caller_opts, [:local])
-    merged_opts = Keyword.merge(base_opts, filtered_caller_opts)
+@doc "Uses :gen_tcp.close for closing the UDS created via :gen_tcp."
+def close_socket(socket) do
+  Logger.debug("ProcessManager: Closing socket (using :gen_tcp)")
+  # Use :gen_tcp.close for sockets opened via :gen_tcp
+  :gen_tcp.close(socket)
+end
 
-    Logger.debug("ProcessManager: Connecting via :socket to local address: #{inspect(address)} with opts: #{inspect(merged_opts)}")
-    # Use :socket.connect with address tuple, port 0, and translated options
-    :socket.connect(address, 0, merged_opts)
-  end
-
-  @doc "Uses :gen_tcp.send for sending data over the UDS."
-  def send_socket(socket, data) do
-    Logger.debug("ProcessManager: Sending to socket: #{inspect(data)}")
-    :gen_tcp.send(socket, data)
-  end
-
-  @doc "Uses :gen_tcp.close for closing the UDS."
-  def close_socket(socket) do
-    Logger.debug("ProcessManager: Closing socket")
-    :gen_tcp.close(socket)
-  end
 end

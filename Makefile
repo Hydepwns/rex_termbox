@@ -4,45 +4,70 @@ MIX_APP_PATH ?= _build/dev/lib/rrex_termbox
 PREFIX = $(MIX_APP_PATH)/priv
 BUILD  = $(MIX_APP_PATH)/obj
 
+# --- Termbox Static Lib --- #
 TERMBOX_PATH = c_src/termbox
 TERMBOX_BUILD = $(MIX_APP_PATH)/termbox_build
-TERMBOX_LIB_INSTALL_PATH = $(TERMBOX_PATH)/lib/libtermbox.a # Actual install location
+TERMBOX_LIB_INSTALL_PATH = $(TERMBOX_BUILD)/lib/libtermbox.a # Changed from termbox/lib to termbox_build/lib
 
-# Executable name
+# --- Port Executable --- #
 PORT_EXECUTABLE = termbox_port
+PORT_SOURCE = c_src/termbox_port.c
 PORT_TARGET = $(PREFIX)/$(PORT_EXECUTABLE)
 
-# C Compiler and Flags for Port executable
-# Using MIX_ARCH and MIX_TARGET for potential cross-compilation awareness
+# --- NIF Shared Library --- #
+NIF_SOURCE = c_src/termbox_bindings.c
+NIF_OBJECT_NAME = termbox_bindings
+# Determine OS for shared library extension
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+	NIF_EXT = .so
+else ifeq ($(UNAME_S),Darwin)
+	NIF_EXT = .so # Use .so for macOS too, as erlang expects it for NIFs
+else
+	NIF_EXT = .so # Default
+endif
+NIF_TARGET = $(PREFIX)/$(NIF_OBJECT_NAME)$(NIF_EXT)
+
+# C Compiler and Flags
 CC ?= gcc # Use system default or mix specified CC, defaulting to gcc
-CFLAGS = -std=c99 -O2 -Wall -Wextra -g # Example flags, adjust as needed
-# Remove platform-specific shared library flags
-# Add include path for termbox library headers
-CFLAGS += -I$(TERMBOX_PATH)/src
-# LDFLAGS are typically not needed for basic executable linking unless specific libs are required
-LDFLAGS = -lncurses # Link against ncurses
+CFLAGS_BASE = -std=c99 -O2 -Wall -Wextra -g # Common flags
+LDFLAGS_BASE = # Common linker flags (if any)
 
-# Keep NIF flags commented out for reference or future use, but not used for port
-# NIF_CFLAGS = -I$(ERTS_INCLUDE_DIR) -I$(TERMBOX_PATH)/src
+# Flags for Port executable
+CFLAGS_PORT = $(CFLAGS_BASE) -I$(TERMBOX_PATH)/src
+LDFLAGS_PORT = $(LDFLAGS_BASE) -lncurses
 
-# Source file for the port executable
-PORT_SOURCE = c_src/termbox_port.c
+# Flags for NIF shared library
+# Add -fPIC for position-independent code
+# Add Erlang include paths (assuming compiler finds erl_nif.h)
+ERLANG_INCLUDE_PATH = /opt/homebrew/Cellar/erlang/27.3.2/lib/erlang/usr/include
+CFLAGS_NIF = $(CFLAGS_BASE) -fPIC -I$(ERLANG_INCLUDE_PATH) -I$(TERMBOX_PATH)/src
+# Link as shared library, link termbox static lib
+LDFLAGS_NIF = $(LDFLAGS_BASE) -shared -undefined dynamic_lookup
 
-# Default target is now the port executable
-all: $(PORT_TARGET)
+
+# Default target builds both port and NIF
+all: $(PORT_TARGET) $(NIF_TARGET)
 	@:
 
 # Rule to build and install the termbox static library
+# Ensure waf build happens first by making it a prerequisite for targets needing it
 $(TERMBOX_LIB_INSTALL_PATH): $(TERMBOX_BUILD)
 	@echo "--- Building libtermbox.a ---"
-	rm -f $(TERMBOX_LIB_INSTALL_PATH)
-	# Ensure Waf commands run in the correct directory and inherit environment
-	cd $(TERMBOX_PATH) && export CFLAGS="-O2 -g -fPIC" && export ARCHFLAGS="-arch $(shell uname -m)" && export LDFLAGS="" && ./waf configure --prefix=. -o $(TERMBOX_BUILD) -v && ./waf build -v && ./waf install -v
+	# Waf install should place the library at $(TERMBOX_BUILD)/lib/libtermbox.a
+	cd $(TERMBOX_PATH) && export CFLAGS="-O2 -g -fPIC" && export ARCHFLAGS="-arch $(shell uname -m)" && export LDFLAGS="" && ./waf configure --prefix=$(TERMBOX_BUILD) -o $(TERMBOX_BUILD)/build -v && ./waf build -v && ./waf install -v
 
 # Rule to build the port executable
+# Depends on the termbox library being built and installed by waf
 $(PORT_TARGET): $(PORT_SOURCE) $(TERMBOX_LIB_INSTALL_PATH) $(PREFIX)
 	@echo "--- Building $(PORT_EXECUTABLE) ---"
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(PORT_SOURCE) $(TERMBOX_LIB_INSTALL_PATH)
+	$(CC) $(CFLAGS_PORT) $(LDFLAGS_PORT) -o $@ $(PORT_SOURCE) $(TERMBOX_LIB_INSTALL_PATH)
+
+# Rule to build the NIF shared library
+# Depends on the termbox library being built and installed by waf
+$(NIF_TARGET): $(NIF_SOURCE) $(TERMBOX_LIB_INSTALL_PATH) $(PREFIX)
+	@echo "--- Building $(NIF_OBJECT_NAME)$(NIF_EXT) ---"
+	$(CC) $(CFLAGS_NIF) $(LDFLAGS_NIF) -o $@ $(NIF_SOURCE) $(TERMBOX_LIB_INSTALL_PATH)
 
 $(PREFIX) $(TERMBOX_BUILD):
 	@echo "--- Creating directory $@ ---"
@@ -50,9 +75,6 @@ $(PREFIX) $(TERMBOX_BUILD):
 
 clean:
 	@echo "--- Cleaning build artifacts ---"
-	rm -rf $(TERMBOX_BUILD) $(PORT_TARGET)
+	rm -rf $(TERMBOX_BUILD) $(PORT_TARGET) $(NIF_TARGET)
 
 .PHONY: all clean
-# Remove calling_from_make if not needed or update it
-# calling_from_make:
-#	mix compile

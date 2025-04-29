@@ -305,4 +305,22 @@ defmodule ExTermbox.Constants do
   """
   @spec hide_cursor() :: hide_cursor
   def hide_cursor, do: @hide_cursor
+
+  @doc """
+  Resolves a color atom (e.g., :red) or integer to its integer value.
+  Returns the default color value if the input is invalid or not found.
+  """
+  def resolve_color(color_input) when is_atom(color_input) do
+    Map.get(colors(), color_input, colors().default)
+  end
+
+  def resolve_color(color_input) when is_integer(color_input) do
+    # Assume integer is already a valid color value (or attribute)
+    color_input
+  end
+
+  def resolve_color(_other) do
+    # Fallback for invalid types
+    colors().default
+  end
 end

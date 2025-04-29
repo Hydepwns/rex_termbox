@@ -1,4 +1,7 @@
 defmodule ExTermbox.Initializer do
+  @moduledoc """
+  Handles the initial setup and supervision of Termbox resources.
+  """
   require Logger
   alias ExTermbox.ProcessManager
 

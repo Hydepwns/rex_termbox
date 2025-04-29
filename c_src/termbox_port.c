@@ -17,7 +17,7 @@
 
 #define MAX_LINE_LENGTH 4096
 #define MAX_ARGS 10
-#define SOCKET_PATH_TEMPLATE "./termbox_port_%d.sock"
+#define SOCKET_PATH_TEMPLATE "/tmp/termbox_port_%d.sock"
 // #define SOCKET_PATH_HARDCODED "/tmp/termbox_test.sock"
 #define SOCKET_BUFFER_SIZE 4096 // For reading from socket
 #define MAX_EVENT_STR_SIZE 256 // Max size for formatted event string
@@ -161,7 +161,11 @@ int main() {
     struct sockaddr_un server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sun_family = AF_UNIX;
-    snprintf(actual_socket_path, sizeof(actual_socket_path), SOCKET_PATH_TEMPLATE, getpid()); // ADD BACK
+    // Use a path within the project structure (relative to where port is run)
+    // Assuming CWD is project root, place it in _build
+    // snprintf(actual_socket_path, sizeof(actual_socket_path), "_build/termbox_port_%d.sock", getpid());
+    // Use absolute path in /tmp
+    snprintf(actual_socket_path, sizeof(actual_socket_path), SOCKET_PATH_TEMPLATE, getpid());
 
     // Remove existing socket file if it exists
     unlink(actual_socket_path); // Use the char array directly
@@ -177,36 +181,29 @@ int main() {
         perror("Error binding socket");
         // log_message("Error: Failed to bind UDS socket."); // Keep perror
         close(listen_socket_fd);
-        unlink(actual_socket_path); // Clean up
+        unlink(actual_socket_path); // Clean up (uses the absolute path now)
         fprintf(stderr, "error socket_bind_failed\n");
         return 1;
     }
-    // log_message("UDS socket bind successful.");
 
-    // Listen (backlog of 1 should be enough for single client)
-    if (listen(listen_socket_fd, 1) == -1) {
+    if (listen(listen_socket_fd, 5) == -1) {
         perror("Error listening on socket");
         // log_message("Error: Failed to listen on UDS socket."); // Keep perror
         close(listen_socket_fd);
-        unlink(actual_socket_path);
+        unlink(actual_socket_path); // Clean up (uses the absolute path now)
         fprintf(stderr, "error socket_listen_failed\n");
         return 1;
     }
-    // log_message("UDS socket listening...");
-    // --- END UDS Socket Setup (Termbox init removed) ---
 
-
-    // --- Send OK response with socket path back via stdout ---
-    // log_message("Sending socket path back to Elixir via stdout...");
     fprintf(stdout, "OK %s\n", actual_socket_path); // Send the dynamic path back
     fflush(stdout); // IMPORTANT: Flush stdout!
-    // log_message("Socket path sent and flushed.");
-    // --- END Send OK response ---
+
+    // --- END UDS Socket Setup (Termbox init removed) ---
 
 
     // --- Accept connection and run main loop (existing logic) ---
     // log_message("Waiting for client connection on UDS...");
-    // This will block until Elixir connects via :gen_tcp
+    // This will block until Elixir connects via :gen_unix
     int result = run_main_loop(listen_socket_fd);
     // --- END Accept connection and run main loop ---
 
@@ -221,6 +218,8 @@ int main() {
 // --- Main UDS Communication Loop ---
 int run_main_loop(int listen_fd) {
     // log_message("Entering main loop. Waiting for client connection...");
+    fprintf(stderr, "termbox_port C_LOG: Entering main loop. Waiting for client connection on fd %d at path %s...\n", listen_fd, actual_socket_path);
+    fflush(stderr);
 
     // Accept the client connection (blocking)
     struct sockaddr_un client_addr;
@@ -229,35 +228,45 @@ int run_main_loop(int listen_fd) {
 
     if (client_socket_fd == -1) {
         perror("Error accepting client connection");
-        // log_message("Error: Failed to accept UDS connection."); // Keep perror
-        // No need to close listen_fd here, main will handle it
-        return 1; // Indicate error
-    }
-    // log_message("Client connected successfully.");
-
-    // --- Initialize Termbox AFTER accepting connection ---
-    // log_message("Initializing Termbox post-accept...");
-    int tb_ret = tb_init();
-    if (tb_ret != 0) {
-        char err_msg[100];
-        snprintf(err_msg, sizeof(err_msg), "tb_init() failed post-accept with code: %d", tb_ret);
-        // log_message(err_msg); // Keep error log
-        fprintf(stderr, "termbox_port C_LOG ERROR: %s\n", err_msg);
+        fprintf(stderr, "termbox_port C_LOG ERROR: Failed to accept UDS connection.\n");
         fflush(stderr);
-        // Try to send error back via socket before closing
-        write_socket_line(client_socket_fd, "ERROR tb_init_failed");
-        // Close client socket before returning error
-        close(client_socket_fd);
-        client_socket_fd = -1; // Mark as closed
         return 1; // Indicate error
     }
-    // log_message("tb_init() post-accept successful.");
-    // --- END Termbox Initialization ---
+    fprintf(stderr, "termbox_port C_LOG: Client connected successfully.\n");
+    fflush(stderr);
 
-    // --- Initialize Shadow Buffer ---
-    // log_message("Initializing shadow buffer post-init...");
-    update_shadow_buffer_size(tb_width(), tb_height());
-    // --- End Shadow Buffer Initialization ---
+    // --- Initialize Termbox MOVED TO CMD_INIT handler ---
+    // log_message("Initializing Termbox post-accept...");
+    // int tb_ret = tb_init();
+    // if (tb_ret != 0) {
+    //     char err_msg[100];
+    //     snprintf(err_msg, sizeof(err_msg), "tb_init() failed post-accept with code: %d", tb_ret);
+    //     fprintf(stderr, "termbox_port C_LOG ERROR: %s\n", err_msg);
+    //     fflush(stderr);
+    //     write_socket_line(client_socket_fd, "ERROR tb_init_failed");
+    //     close(client_socket_fd);
+    //     client_socket_fd = -1;
+    //     return 1; // Error
+    // }
+    // fprintf(stderr, "termbox_port C_LOG: Termbox initialized successfully (MOVED TO CMD_INIT).\n");
+    // fflush(stderr);
+    // update_shadow_buffer_size(tb_width(), tb_height()); // Also moved
+    // --- End Termbox Initialization ---
+
+    // Set client socket to non-blocking
+    int flags = fcntl(client_socket_fd, F_GETFL, 0);
+    if (flags == -1) {
+        perror("Error getting socket flags");
+        close(client_socket_fd);
+        client_socket_fd = -1;
+        return 1; // Indicate error
+    }
+    if (fcntl(client_socket_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("Error setting socket to non-blocking");
+        close(client_socket_fd);
+        client_socket_fd = -1;
+        return 1; // Indicate error
+    }
 
     // --- Main event/command loop ---
     fd_set read_fds;

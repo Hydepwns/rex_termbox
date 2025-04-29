@@ -1,4 +1,7 @@
 defmodule ExTermbox.PortHandler.TerminationHandler do
+  @moduledoc """
+  Handles the `terminate/2` callback for `ExTermbox.PortHandler`.
+  """
   require Logger
   alias ExTermbox.ProcessManager
 
@@ -50,4 +53,4 @@ defmodule ExTermbox.PortHandler.TerminationHandler do
 
     :ok
   end
-end 
+end

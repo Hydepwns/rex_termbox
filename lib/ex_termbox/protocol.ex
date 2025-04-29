@@ -1,12 +1,28 @@
 defmodule ExTermbox.Protocol do
+  @moduledoc """
+  Defines the protocol for communication between Elixir and the C Termbox helper.
+  Includes parsing/formatting functions.
+  """
   require Logger
+
+  # --- BEGIN ADD Regexes ---
+  @ok_regex ~r/^OK$/i
+  @error_regex ~r/^ERROR\\s+(.*)$/
+  @ok_cell_regex ~r/^OK_CELL\\s+(\\S+)\\s+(\\S+)\\s+(.+?)\\s+(\\S+)\\s+(\\S+)$/
+  @ok_width_regex ~r/^OK_WIDTH\\s+(\\S+)$/
+  @ok_height_regex ~r/^OK_HEIGHT\\s+(\\S+)$/
+  @event_regex ~r/^EVENT\\s+(.*)$/
+  # --- END ADD Regexes ---
 
   # --- BEGIN ADD Command Formatting ---
   # Formats the command string to be sent over the socket.
   # Note: C side expects a newline terminator, which send_socket_command should handle.
 
-  def format_present_command(), do: "present"
-  def format_clear_command(), do: "clear"
+  @spec format_present_command :: String.t()
+  def format_present_command, do: "PRESENT\n"
+
+  @spec format_clear_command :: String.t()
+  def format_clear_command, do: "CLEAR\n"
 
   def format_print_command(x, y, fg, bg, text) do
     # Ensure text doesn't contain newlines which would break the protocol
@@ -18,8 +34,11 @@ defmodule ExTermbox.Protocol do
     "get_cell #{x} #{y}"
   end
 
-  def format_width_command(), do: "width"
-  def format_height_command(), do: "height"
+  @spec format_width_command :: String.t()
+  def format_width_command, do: "WIDTH\n"
+
+  @spec format_height_command :: String.t()
+  def format_height_command, do: "HEIGHT\n"
 
   def format_change_cell_command(x, y, codepoint, fg, bg) do
     "change_cell #{x} #{y} #{codepoint} #{fg} #{bg}"
@@ -37,7 +56,8 @@ defmodule ExTermbox.Protocol do
     "set_output_mode #{mode}"
   end
 
-  def format_set_clear_attributes_command(fg, bg) when is_integer(fg) and is_integer(bg) do
+  def format_set_clear_attributes_command(fg, bg)
+      when is_integer(fg) and is_integer(bg) do
     "set_clear_attributes #{fg} #{bg}"
   end
 
@@ -79,107 +99,149 @@ defmodule ExTermbox.Protocol do
     trimmed_line = String.trim(line)
     # Logger.debug("Protocol parsing Socket Line: '#{trimmed_line}'")
 
-    cond do
-      # Match exact "OK"
-      String.downcase(trimmed_line) == "ok" ->
-        # Logger.debug("Protocol matched 'OK'")
-        {:ok_response}
+    # --- BEGIN REFACTOR parse_socket_line (Fix Guard Error) ---
+    # Check for simple OK case first, as Regex.match? cannot be in guard
+    if Regex.match?(@ok_regex, trimmed_line) do
+      _parse_ok()
+    else
+      # Handle other cases using Regex.run (which is not in a guard here)
+      cond do
+        captures = Regex.run(@error_regex, trimmed_line) ->
+          # ["ERROR ...", "reason"]
+          _parse_error(captures |> Enum.at(1))
 
-      # Match "ERROR <reason>"
-      String.starts_with?(trimmed_line, "ERROR ") ->
-        reason = String.slice(trimmed_line, 6..-1//-1) |> String.trim()
-        Logger.error("Protocol received C Socket Error: #{reason}")
-        {:error_response, reason}
+        captures = Regex.run(@ok_cell_regex, trimmed_line) ->
+          # ["OK_CELL ...", x_s, y_s, char_utf8, fg_s, bg_s]
+          _parse_ok_cell(captures |> Enum.drop(1))
 
-      # --- BEGIN ADD OK_CELL Parsing ---
-      # Match "OK_CELL <x> <y> <char_utf8> <fg_raw> <bg_raw>"
-      String.starts_with?(trimmed_line, "OK_CELL ") ->
-        data_part = String.slice(trimmed_line, 8..-1//-1) |> String.trim()
-        # Split carefully, the char might be multi-byte or contain spaces if not handled well in C
-        # Assuming C sends single space delimiters correctly.
-        parts = String.split(data_part, " ", parts: 5) # Split into max 5 parts: x, y, char, fg, bg
+        captures = Regex.run(@ok_width_regex, trimmed_line) ->
+          # ["OK_WIDTH ...", width_s]
+          _parse_ok_width(captures |> Enum.at(1))
 
-        case parts do
-          [x_s, y_s, char_utf8, fg_s, bg_s] ->
-            with {:ok, x} <- parse_int(x_s, :x),
-                 {:ok, y} <- parse_int(y_s, :y),
-                 # Char is already UTF-8 string from C
-                 {:ok, fg} <- parse_uint(fg_s, :fg),
-                 {:ok, bg} <- parse_uint(bg_s, :bg) do
+        captures = Regex.run(@ok_height_regex, trimmed_line) ->
+          # ["OK_HEIGHT ...", height_s]
+          _parse_ok_height(captures |> Enum.at(1))
 
-                # Logger.debug("Protocol matched 'OK_CELL': x=#{x}, y=#{y}, char='#{char_utf8}', fg=#{fg}, bg=#{bg}")
-                 cell_data = %{
-                   x: x,
-                   y: y,
-                   char: char_utf8, # Keep as string
-                   fg: fg,
-                   bg: bg
-                 }
-                {:ok_cell_response, cell_data}
-            else
-               error ->
-                 Logger.error("Protocol failed to parse OK_CELL data '#{data_part}': #{inspect(error)}")
-                 {:parse_error, :ok_cell, data_part, error}
-            end
-          _ ->
-             Logger.error("Protocol received malformed OK_CELL line: '#{trimmed_line}'")
-            {:parse_error, :ok_cell_format, trimmed_line}
-        end
-      # --- END ADD OK_CELL Parsing ---
+        captures = Regex.run(@event_regex, trimmed_line) ->
+          # ["EVENT ...", event_data]
+          # Pass original for logging
+          _parse_event_line(captures |> Enum.at(1), trimmed_line)
 
-      # Match "OK_WIDTH <value>"
-      String.starts_with?(trimmed_line, "OK_WIDTH ") ->
-        data_part = String.slice(trimmed_line, 9..-1//-1) |> String.trim()
-        case parse_int(data_part, :width) do
-          {:ok, width} ->
-            # Logger.debug("Protocol matched 'OK_WIDTH': #{width}")
-            {:ok_width_response, width}
-          error ->
-            Logger.error("Protocol failed to parse OK_WIDTH data '#{data_part}': #{inspect(error)}")
-            {:parse_error, :ok_width, data_part, error}
-        end
+        true ->
+          # Fallback for unknown format
+          _parse_unknown(trimmed_line)
+      end
+    end
 
-      # Match "OK_HEIGHT <value>"
-      String.starts_with?(trimmed_line, "OK_HEIGHT ") ->
-        data_part = String.slice(trimmed_line, 10..-1//-1) |> String.trim()
-        case parse_int(data_part, :height) do
-          {:ok, height} ->
-            # Logger.debug("Protocol matched 'OK_HEIGHT': #{height}")
-            {:ok_height_response, height}
-          error ->
-            Logger.error("Protocol failed to parse OK_HEIGHT data '#{data_part}': #{inspect(error)}")
-            {:parse_error, :ok_height, data_part, error}
-        end
+    # --- END REFACTOR parse_socket_line (Fix Guard Error) ---
+  end
 
-      # Match "EVENT <data>"
-      String.starts_with?(trimmed_line, "EVENT ") ->
-        event_data = String.slice(trimmed_line, 6..-1//-1) |> String.trim()
-        # Logger.debug("Protocol matched 'EVENT data': #{event_data}")
+  # --- BEGIN ADD Private Helper Functions for Parsing ---
+  defp _parse_ok do
+    # Logger.debug("Protocol matched 'OK'")
+    {:ok_response}
+  end
 
-        case parse_event(event_data) do
-          {:ok, event_map} ->
-            # Further map raw values if needed (e.g., type, mod, key to atoms)
-            # For now, keep the structure as decoded.
-             # Logger.debug("Protocol decoded event JSON: #{inspect(event_map)}")
-            {:event, event_map}
+  defp _parse_error(reason_s) do
+    reason = String.trim(reason_s)
+    Logger.error("Protocol received C Socket Error: #{reason}")
+    {:error_response, reason}
+  end
 
-          {:error, reason} ->
-            Logger.error(
-              "Protocol failed to parse event data '#{event_data}': #{inspect(reason)}"
-            )
+  defp _parse_ok_cell([x_s, y_s, char_utf8, fg_s, bg_s]) do
+    with {:ok, x} <- parse_int(x_s, :x),
+         {:ok, y} <- parse_int(y_s, :y),
+         # Char is already UTF-8 string from C
+         {:ok, fg} <- parse_uint(fg_s, :fg),
+         {:ok, bg} <- parse_uint(bg_s, :bg) do
+      # Logger.debug("Protocol matched 'OK_CELL': x=#{x}, y=#{y}, char='#{char_utf8}', fg=#{fg}, bg=#{bg}")
+      cell_data = %{
+        x: x,
+        y: y,
+        # Keep as string
+        char: char_utf8,
+        fg: fg,
+        bg: bg
+      }
 
-            {:parse_error, :event, event_data, reason}
-        end
+      {:ok_cell_response, cell_data}
+    else
+      error ->
+        original_data = "#{x_s} #{y_s} #{char_utf8} #{fg_s} #{bg_s}"
 
-      # Unknown line format
-      true ->
-        Logger.warning(
-          "Protocol received unknown line format from socket: '#{trimmed_line}'"
+        Logger.error(
+          "Protocol failed to parse OK_CELL data '#{original_data}': #{inspect(error)}"
         )
 
-        {:unknown_line, trimmed_line}
+        {:parse_error, :ok_cell, original_data, error}
     end
   end
+
+  # Handle case where regex matches but capture group extraction failed (shouldn't happen with drop(1))
+  # Or if the regex itself was constructed incorrectly for the number of captures.
+  defp _parse_ok_cell(other_captures) do
+    Logger.error(
+      "Protocol received OK_CELL line with unexpected capture format: #{inspect(other_captures)}"
+    )
+
+    {:parse_error, :ok_cell_internal_format, inspect(other_captures)}
+  end
+
+  defp _parse_ok_width(width_s) do
+    case parse_int(width_s, :width) do
+      {:ok, width} ->
+        # Logger.debug("Protocol matched 'OK_WIDTH': #{width}")
+        {:ok_width_response, width}
+
+      error ->
+        Logger.error(
+          "Protocol failed to parse OK_WIDTH data '#{width_s}': #{inspect(error)}"
+        )
+
+        {:parse_error, :ok_width, width_s, error}
+    end
+  end
+
+  defp _parse_ok_height(height_s) do
+    case parse_int(height_s, :height) do
+      {:ok, height} ->
+        # Logger.debug("Protocol matched 'OK_HEIGHT': #{height}")
+        {:ok_height_response, height}
+
+      error ->
+        Logger.error(
+          "Protocol failed to parse OK_HEIGHT data '#{height_s}': #{inspect(error)}"
+        )
+
+        {:parse_error, :ok_height, height_s, error}
+    end
+  end
+
+  defp _parse_event_line(event_data, _original_line) do
+    # Logger.debug("Protocol matched 'EVENT data': #{event_data}")
+    case parse_event(event_data) do
+      {:ok, event_map} ->
+        # Logger.debug("Protocol decoded event JSON: #{inspect(event_map)}")
+        {:event, event_map}
+
+      {:error, reason} ->
+        Logger.error(
+          "Protocol failed to parse event data '#{event_data}': #{inspect(reason)}"
+        )
+
+        {:parse_error, :event, event_data, reason}
+    end
+  end
+
+  defp _parse_unknown(trimmed_line) do
+    Logger.warning(
+      "Protocol received unknown line format from socket: '#{trimmed_line}'"
+    )
+
+    {:unknown_line, trimmed_line}
+  end
+
+  # --- END ADD Private Helper Functions for Parsing ---
 
   defp parse_int(s, field) do
     case Integer.parse(s) do
@@ -305,4 +367,11 @@ defmodule ExTermbox.Protocol do
   # Or :ctrl_8
   defp map_event_key(0x7F), do: :backspace2
   defp map_event_key(other_key), do: {:unknown_key, other_key}
+
+  # --- BEGIN ADD DEBUG_SEND_EVENT Format ---
+  def format_debug_send_event_command(type, mod, key, ch, w, h, x, y) do
+    "DEBUG_SEND_EVENT #{type} #{mod} #{key} #{ch} #{w} #{h} #{x} #{y}"
+  end
+
+  # --- END ADD DEBUG_SEND_EVENT Format ---
 end

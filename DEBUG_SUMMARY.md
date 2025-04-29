@@ -2,13 +2,13 @@
 
 ## Project Goal
 
-Implement reliable communication between the Elixir `ExTermbox` library and its C helper process (`termbox_port`) using Unix Domain Sockets (UDS). The initial approach used Elixir Ports directly for all communication, which proved unreliable. The current approach uses a simple newline-based command over an Elixir Port for the initial handshake (exchanging the UDS path) and then switches to direct UDS communication via `:gen_tcp` (or potentially `:socket`) for subsequent commands and events.
+Implement reliable communication between the Elixir `ExTermbox` library and its C helper process (`termbox_port`) using Unix Domain Sockets (UDS). The initial approach used Elixir Ports directly for all communication, which proved unreliable. The current approach uses a simple newline-based command over an Elixir Port for the initial handshake (exchanging the UDS path) and then switches to direct UDS communication via `:gen_unix` (or potentially `:socket`) for subsequent commands and events.
 
 ## Architecture Overview
 
 - **ExTermbox**: Public API.
 - **ExTermbox.PortHandler**: Central GenServer, orchestrates init and runtime communication.
-  - Uses **ExTermbox.ProcessManager**: Wraps `Port` calls and `:gen_tcp` calls.
+  - Uses **ExTermbox.ProcessManager**: Wraps `Port` calls and `:gen_unix` calls.
   - Uses **ExTermbox.Buffer**: Manages incoming socket data buffering.
   - Uses **ExTermbox.Protocol**: Parses socket messages.
 - **c_src/termbox_port.c**: C helper process.
@@ -41,10 +41,10 @@ Implement reliable communication between the Elixir `ExTermbox` library and its 
   - Added tests for `width/0`, `height/0`, and `set_cursor/2`.
 - **Integration Tests Failing Locally (macOS 15.4.1 Beta):**
   - Tests still fail during `ExTermbox.init/1` on macOS 15.4.1 (Beta) with Erlang OTP 26.2.5 and 27.2.5 because the `PortHandler` cannot establish a UDS connection to the C process.
-  - Attempts using `:gen_tcp.connect(charlist_path, 0, [:local | opts])` fail with a `FunctionClauseError` in `:local_tcp.getaddrs/2`.
+  - Attempts using `:gen_unix.connect(charlist_path, 0, [:local | opts])` fail with a `FunctionClauseError` in `:local_tcp.getaddrs/2`.
   - Attempts using `:socket.connect({:local, path_binary}, 0, opts)` fail with `:badarg`.
   - Attempts using `:socket.connect({:local, path_charlist}, 0, opts)` also fail with `:badarg`.
-  - **Conclusion:** This appears to be an incompatibility specific to macOS 15.4.1 Beta and Erlang/OTP's UDS client implementation (`:gen_tcp`/:`socket`). Tests on standard platforms (Linux, stable macOS) are expected to pass. Local testing failure is NOT considered a blocker for further development assuming portability.
+  - **Conclusion:** This appears to be an incompatibility specific to macOS 15.4.1 Beta and Erlang/OTP's UDS client implementation (`:gen_unix`/:`socket`). Tests on standard platforms (Linux, stable macOS) are expected to pass. Local testing failure is NOT considered a blocker for further development assuming portability.
 
 ## Issues Encountered & Resolved / In Progress
 
@@ -61,7 +61,7 @@ Implement reliable communication between the Elixir `ExTermbox` library and its 
 - Reading `stdin` in the C Port process is unreliable when run under `mix test`.
 - Simple immediate stdout response (`OK <path>\\n`) from C process upon startup is captured by Elixir Port.
 - `tb_init()` requires a TTY or specific environment setup, failing when called too early.
-- UDS (`:gen_tcp` / `socket`, `bind`, `listen`, `accept`) is suitable for subsequent communication *on standard platforms*. **Hypothesis Invalidated (for client connect on macOS 15.4.1 Beta):** Standard Erlang UDS connection methods (`:gen_tcp`, `:socket`) are failing on this specific platform/version combination.
+- UDS (`:gen_unix` / `socket`, `bind`, `listen`, `accept`) is suitable for subsequent communication *on standard platforms*. **Hypothesis Invalidated (for client connect on macOS 15.4.1 Beta):** Standard Erlang UDS connection methods (`:gen_unix`, `:socket`) are failing on this specific platform/version combination.
 
 ## Next Steps (Local test failures on macOS Beta deferred)
 
@@ -84,7 +84,7 @@ Implement reliable communication between the Elixir `ExTermbox` library and its 
 
 Integration tests fail during `ExTermbox.init/1` on macOS 15.4.1 Beta (Erlang/OTP 26/27) because the Elixir process cannot establish a UDS client connection to the C helper process.
 
-Attempts using `:gen_tcp.connect/3` fail with `:local_tcp.getaddrs/2` `FunctionClauseError`, and attempts using `:socket.connect/3` fail with `{:error, :badarg}`.
+Attempts using `:gen_unix.connect/3` fail with `:local_tcp.getaddrs/2` `FunctionClauseError`, and attempts using `:socket.connect/3` fail with `{:error, :badarg}`.
 
 ## Conclusion
 

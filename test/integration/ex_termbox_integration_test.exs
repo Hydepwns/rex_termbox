@@ -1,209 +1,218 @@
 defmodule ExTermbox.IntegrationTest do
-  use ExUnit.Case, async: false # Integration tests often need to run sequentially
+  # Integration tests often need to run sequentially
+  use ExUnit.Case, async: false
 
   # Tag to exclude from normal `mix test` runs unless explicitly included
   # or run via `mix test --include integration`
   @moduletag :integration
 
-  setup do
+  setup context do
     # Start the ExTermbox supervised process using the public API
+    # Start without a name for test isolation
     case ExTermbox.init([]) do
-      {:ok, _pid} ->
-        # Give the port/socket a moment to initialize fully
-        Process.sleep(1000) # Increased delay
-        # Use shutdown on exit
-        on_exit(fn -> ExTermbox.shutdown() end)
-        :ok # Setup successful
+      {:ok, pid} ->
+        # No longer need sleep, init is synchronous
+        # Process.sleep(1000)
+
+        # Use shutdown on exit, targeting the specific PID
+        on_exit(context, fn ->
+          # Attempt clean shutdown via API first
+          _ = ExTermbox.shutdown(pid)
+          # Ensure process is stopped even if shutdown fails
+          # Use Process.exit with :kill for immediate termination if still alive
+          if Process.alive?(pid), do: Process.exit(pid, :kill)
+        end)
+
+        # Setup successful, return pid in context
+        {:ok, %{handler_pid: pid}}
+
       {:error, reason} ->
-         # Fail the setup if init fails
-         {:error, %{reason: reason}}
+        # Fail the setup if init fails
+        {:error, %{reason: reason}}
     end
   end
 
-  test "initializes, presents, and clears without error" do
-    # Add a sleep here to ensure PortHandler processes the init message
-    Process.sleep(500)
+  test "initializes, presents, and clears without error", context do
+    # Remove sleep, init is sync
+    # Process.sleep(500)
 
-    # Simple check to ensure the process starts and basic commands don't crash
-    # We can't easily verify the *visual* output in an automated test,
-    # but we can check if the calls succeed.
-    # Use public API without pid
-    assert ExTermbox.present() == :ok
-    assert ExTermbox.clear() == :ok
-    assert ExTermbox.present() == :ok
+    # Pass handler_pid from context
+    assert ExTermbox.present(context.handler_pid) == :ok
+    assert ExTermbox.clear(context.handler_pid) == :ok
+    assert ExTermbox.present(context.handler_pid) == :ok
   end
 
-  test "prints text and verifies content via get_cell" do
-    # Add a sleep here to ensure PortHandler processes the init message
-    Process.sleep(500)
+  test "prints text and verifies content via get_cell", context do
+    # Remove sleep
+    # Process.sleep(500)
 
     # Check if the print call succeeds
     char_to_print = "H"
     x_pos = 1
     y_pos = 1
-    # Use constants if available, otherwise raw integers
-    fg = ExTermbox.Const.Color.RED
-    bg = ExTermbox.Const.Color.BLUE
+    # Use atoms for colors
+    fg = :red
+    bg = :blue
     text = char_to_print <> "ello Integration Test"
-    # Use public API without pid
-    assert ExTermbox.print(x_pos, y_pos, fg, bg, text) == :ok
+
+    # Pass handler_pid
+    assert ExTermbox.print(context.handler_pid, x_pos, y_pos, fg, bg, text) == :ok
 
     # Present the changes (important!)
-    # Use public API without pid
-    assert ExTermbox.present() == :ok
+    # Pass handler_pid
+    assert ExTermbox.present(context.handler_pid) == :ok
 
     # Allow a very brief moment for C side to process/update
     Process.sleep(50)
 
     # Get the cell content back
-    # Use public API without pid
-    case ExTermbox.get_cell(x_pos, y_pos) do
+    # Pass handler_pid
+    case ExTermbox.get_cell(context.handler_pid, x_pos, y_pos) do
       {:ok, cell_data} ->
         # Assert on the map contents
         assert cell_data.x == x_pos
         assert cell_data.y == y_pos
         # Check against the character we actually printed
         assert cell_data.char == char_to_print
+        # Assume get_cell also returns atoms now
         assert cell_data.fg == fg
         assert cell_data.bg == bg
 
       {:error, reason} ->
         flunk("get_cell failed: #{inspect(reason)}")
     end
-
   end
 
-  test "gets width and height" do
-    # Add a sleep here to ensure PortHandler processes the init message
-    Process.sleep(500)
+  test "gets width and height", context do
+    # Remove sleep
+    # Process.sleep(500)
 
     # Get width
-    case ExTermbox.width() do
+    # Pass handler_pid
+    case ExTermbox.width(context.handler_pid) do
       {:ok, width} ->
-        # We don't know the exact width, but it should be a positive integer
         assert is_integer(width) and width > 0
-
       {:error, reason} ->
         flunk("width() failed: #{inspect(reason)}")
     end
 
     # Get height
-    case ExTermbox.height() do
+    # Pass handler_pid
+    case ExTermbox.height(context.handler_pid) do
       {:ok, height} ->
-        # We don't know the exact height, but it should be a positive integer
         assert is_integer(height) and height > 0
-
       {:error, reason} ->
         flunk("height() failed: #{inspect(reason)}")
     end
   end
 
-  test "sets cursor position" do
-    # Add a sleep here to ensure PortHandler processes the init message
-    Process.sleep(500)
+  test "sets cursor position", context do
+    # Remove sleep
+    # Process.sleep(500)
 
-    # Set cursor to a position (e.g., 5, 10)
-    assert ExTermbox.set_cursor(5, 10) == :ok
-    # We need to present to see the effect, but we can't verify visually easily.
-    assert ExTermbox.present() == :ok 
+    # Pass handler_pid
+    assert ExTermbox.set_cursor(context.handler_pid, 5, 10) == :ok
+    assert ExTermbox.present(context.handler_pid) == :ok
 
     # Hide the cursor
-    assert ExTermbox.set_cursor(-1, -1) == :ok
-    assert ExTermbox.present() == :ok
+    # Pass handler_pid
+    assert ExTermbox.set_cursor(context.handler_pid, -1, -1) == :ok
+    assert ExTermbox.present(context.handler_pid) == :ok
   end
 
-  test "sets input mode" do
-    Process.sleep(500)
-    # Test with a known valid mode (e.g., Esc)
-    mode_esc = ExTermbox.Const.InputMode.ESC
-    assert ExTermbox.set_input_mode(mode_esc) == :ok
+  test "sets input mode", context do
+    # Remove sleep
+    # Process.sleep(500)
 
-    # Test with another mode (e.g., Alt)
-    mode_alt = ExTermbox.Const.InputMode.ALT
-    assert ExTermbox.set_input_mode(mode_alt) == :ok
+    # Pass handler_pid
+    # Test setting individual modes using atoms
+    assert ExTermbox.select_input_mode(context.handler_pid, :esc) == :ok
+    assert ExTermbox.select_input_mode(context.handler_pid, :alt) == :ok
 
-    # Test combining modes (if applicable, check termbox docs)
-    # Assuming modes are bit flags
-    mode_combined = Bitwise.bor(mode_esc, mode_alt)
-    assert ExTermbox.set_input_mode(mode_combined) == :ok
+    # Pass handler_pid
+    # The API currently takes one mode at a time, bitwise combination via API isn't directly supported
+    # mode_combined = Bitwise.bor(mode_esc, mode_alt) # Removed
+    # assert ExTermbox.select_input_mode(context.handler_pid, mode_combined) == :ok # Removed
 
-    # Test setting back to current (should be ok)
-    # mode_current = tb_select_input_mode(0) # C function, not directly callable here
-    # Need a way to get current mode if we want to restore, or just test known values.
-    assert ExTermbox.set_input_mode(ExTermbox.Const.InputMode.CURRENT) == :ok
-
-    # Note: Cannot easily verify the *effect* of the mode change here.
+    # Pass handler_pid
+    # Use atom for current mode
+    assert ExTermbox.select_input_mode(context.handler_pid, :current) == :ok
   end
 
-  test "sets output mode" do
-    Process.sleep(500)
+  test "sets output mode", context do
+    # Remove sleep
+    # Process.sleep(500)
 
-    # Test with known valid modes
-    assert ExTermbox.set_output_mode(ExTermbox.Const.OutputMode.NORMAL) == :ok
-    assert ExTermbox.set_output_mode(ExTermbox.Const.OutputMode.TRUECOLOR) == :ok
-    # Maybe test 256 mode
-    assert ExTermbox.set_output_mode(ExTermbox.Const.OutputMode.C256) == :ok
-    # Back to current
-    assert ExTermbox.set_output_mode(ExTermbox.Const.OutputMode.CURRENT) == :ok
+    # Pass handler_pid
+    # Use atoms for output modes
+    assert ExTermbox.set_output_mode(context.handler_pid, :normal) == :ok
+    assert ExTermbox.set_output_mode(context.handler_pid, :truecolor) == :ok
+    assert ExTermbox.set_output_mode(context.handler_pid, :c256) == :ok
+    assert ExTermbox.set_output_mode(context.handler_pid, :current) == :ok
 
-    # Need to present for some modes to take effect, but verification is hard.
-    assert ExTermbox.present() == :ok
+    # Pass handler_pid
+    assert ExTermbox.present(context.handler_pid) == :ok
   end
 
-  test "sets clear attributes" do
-    Process.sleep(500)
+  test "sets clear attributes", context do
+    # Remove sleep
+    # Process.sleep(500)
 
-    fg = ExTermbox.Const.Color.YELLOW
-    bg = ExTermbox.Const.Color.MAGENTA
+    # Use atoms for colors
+    fg = :yellow
+    bg = :magenta
 
-    assert ExTermbox.set_clear_attributes(fg, bg) == :ok
+    # Pass handler_pid
+    assert ExTermbox.set_clear_attributes(context.handler_pid, fg, bg) == :ok
 
-    # Optionally call clear and present, although we can't verify the result easily
-    assert ExTermbox.clear() == :ok
-    assert ExTermbox.present() == :ok
+    # Pass handler_pid
+    assert ExTermbox.clear(context.handler_pid) == :ok
+    assert ExTermbox.present(context.handler_pid) == :ok
 
-    # Set back to default
-    assert ExTermbox.set_clear_attributes(ExTermbox.Const.Color.DEFAULT, ExTermbox.Const.Color.DEFAULT) == :ok
-    assert ExTermbox.clear() == :ok
-    assert ExTermbox.present() == :ok
+    # Pass handler_pid
+    assert ExTermbox.set_clear_attributes(
+             context.handler_pid,
+             # Use atom for default color
+             :default,
+             :default
+           ) == :ok
+
+    # Pass handler_pid
+    assert ExTermbox.clear(context.handler_pid) == :ok
+    assert ExTermbox.present(context.handler_pid) == :ok
   end
 
-  # --- BEGIN ADD Event Test ---
-  test "receives synthetic event via debug command" do
-    Process.sleep(500) # Ensure init is complete
+  test "receives synthetic event via debug command", context do
+    # Remove sleep
+    # Process.sleep(500)
 
-    # Define the event we want to simulate (e.g., a key press)
+    # Subscribe the test process to events from the specific handler
+    # We need an `EventManager.subscribe(pid_or_name)` function
+    # Assuming EventManager also uses PID now, or we modify it.
+    # Let's assume for now EventManager needs adjustment too, but
+    # we first make sure the event command can be SENT.
+
+    # Define the event using atoms
     test_event = %{
-      type: ExTermbox.Const.EventType.KEY, # tb_event type for key press
-      mod: 0, # No modifier key
-      key: ExTermbox.Const.Key.ARROW_UP, # Key code for Up Arrow
-      ch: 0, # Character code (0 for non-char keys)
-      w: 0, # Resize width (not used for key event)
-      h: 0, # Resize height (not used for key event)
-      x: 0, # Mouse x (not used for key event)
-      y: 0 # Mouse y (not used for key event)
+      type: :key, # Use atom
+      mod: 0,
+      key: :arrow_up, # Use atom
+      ch: 0,
+      w: 0, h: 0, x: 0, y: 0
     }
 
-    # Send the debug command to trigger the event emission from C
-    assert ExTermbox.debug_send_event(test_event) == :ok
+    # Send the debug command, passing handler_pid
+    assert ExTermbox.debug_send_event(context.handler_pid, test_event) == :ok
 
-    # Assert that the PortHandler sends the {:termbox_event, event_map} message
-    # to its owner (the test process in this case)
-    assert_receive {:termbox_event, received_event_map}, 1000 # Timeout after 1 second
-
-    # Verify the content of the received event map
-    # Note: Protocol currently returns string keys from JSON
-    assert received_event_map["type"] == ExTermbox.Const.EventType.KEY
-    assert received_event_map["mod"] == 0
-    assert received_event_map["key"] == ExTermbox.Const.Key.ARROW_UP
-    assert received_event_map["ch"] == 0
-    assert received_event_map["w"] == 0
-    assert received_event_map["h"] == 0
-    assert received_event_map["x"] == 0
-    assert received_event_map["y"] == 0
+    # Need mechanism to receive event
+    # Assuming events are sent to the owner (test process)
+    # Add `allow_subscribe_from_self: true` to init maybe?
+    # Or refactor EventManager...
+    # For now, just assert the command was sent.
+    # We'll need to verify reception later.
+    assert_receive {:termbox_event, ^test_event}, 500 # Add timeout
 
   end
-  # --- END ADD Event Test ---
 
   # TODO: Add more tests, e.g., for specific cell changes (if possible), events
-end 
+end

@@ -44,7 +44,7 @@ defmodule ExTermbox.Position do
 
   """
   @spec translate_x(t, integer) :: t
-  def translate_x(%Position{} = pos, dx), do: translate(pos, dx, 0)
+  def translate_x(pos = %Position{y: _y}, dx), do: translate(pos, dx, 0)
 
   @doc """
   Translates a position by a delta y.
@@ -60,5 +60,5 @@ defmodule ExTermbox.Position do
 
   """
   @spec translate_y(t, integer) :: t
-  def translate_y(%Position{} = pos, dy), do: translate(pos, 0, dy)
+  def translate_y(pos = %Position{x: _x}, dy), do: translate(pos, 0, dy)
 end

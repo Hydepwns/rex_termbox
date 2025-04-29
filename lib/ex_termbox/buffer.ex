@@ -1,4 +1,8 @@
 defmodule ExTermbox.Buffer do
+  @moduledoc """
+  Handles buffering of incoming data chunks from the Unix Domain Socket.
+  Extracts complete lines terminated by newline characters.
+  """
   require Logger
 
   @doc """
@@ -11,7 +15,11 @@ defmodule ExTermbox.Buffer do
   """
   def process(buffer, data_chunk) do
     # Ensure data_chunk is a string for String.split
-    data_string = if is_binary(data_chunk), do: IO.iodata_to_binary(data_chunk), else: data_chunk
+    data_string =
+      if is_binary(data_chunk),
+        do: IO.iodata_to_binary(data_chunk),
+        else: data_chunk
+
     new_buffer = buffer <> data_string
     # Pass an empty list accumulator to process_lines
     process_lines(new_buffer, [])
@@ -41,6 +49,12 @@ defmodule ExTermbox.Buffer do
         trimmed_line = String.trim(line)
         # Recursively process the rest of the buffer, adding the trimmed line
         process_lines(rest, [trimmed_line | acc_lines])
-    end # end case
-  end # end process_lines
-end # end defmodule
+    end
+
+    # end case
+  end
+
+  # end process_lines
+end
+
+# end defmodule

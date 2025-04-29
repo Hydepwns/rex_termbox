@@ -37,6 +37,7 @@ defmodule ExTermbox.EventManager do
   """
 
   use GenServer
+  require Logger
 
   alias ExTermbox.Event
 
@@ -118,9 +119,13 @@ defmodule ExTermbox.EventManager do
 
   @impl true
   def terminate(_reason, state) do
-    # Try to stop polling for events to leave the system in a clean state. If
-    # this fails or `terminate/2` isn't called, it will have to be done later.
+    # Stop polling when the EventManager terminates.
+    # Ensure bindings stop polling
     _ = state.bindings.stop_polling()
+
+    # Attempt to shutdown the PortHandler - REMOVED as EventManager doesn't know PID
+    # _ = ExTermbox.shutdown()
+    Logger.info("EventManager terminating.")
     :ok
   end
 

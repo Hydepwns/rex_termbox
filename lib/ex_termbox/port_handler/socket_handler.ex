@@ -1,10 +1,13 @@
 defmodule ExTermbox.PortHandler.SocketHandler do
+  @moduledoc """
+  Handles Unix Domain Socket interactions (`:tcp_*` messages) for `ExTermbox.PortHandler`.
+  """
   require Logger
   alias ExTermbox.Buffer
+  alias ExTermbox.PortHandler.InitHandler
   alias ExTermbox.Protocol
-  alias ExTermbox.PortHandler.InitHandler # Alias for function calls
 
-  # --- Public Functions (called by PortHandler) --- 
+  # --- Public Functions (called by PortHandler) ---
 
   # Helper for handle_info({:tcp, socket, data}) when connected
   # Takes data, current buffer, pending_call tuple, owner PID
@@ -28,6 +31,7 @@ defmodule ExTermbox.PortHandler.SocketHandler do
           buffer: remaining_buffer,
           pending_call: new_pending_call
         }
+
         {:noreply, state_updates, nil}
 
       {:incomplete, new_buffer} ->
@@ -35,7 +39,10 @@ defmodule ExTermbox.PortHandler.SocketHandler do
         {:noreply, %{buffer: new_buffer}, nil}
 
       other ->
-        Logger.error("[SocketHandler] Buffer.process returned unexpected: #{inspect(other)}")
+        Logger.error(
+          "[SocketHandler] Buffer.process returned unexpected: #{inspect(other)}"
+        )
+
         {:noreply, %{}, nil}
     end
   end
@@ -52,9 +59,11 @@ defmodule ExTermbox.PortHandler.SocketHandler do
     state_updates = %{
       socket: nil,
       initialized?: false,
-      init_stage: InitHandler.init_stage_init_failed(), # Call function
+      # Call function
+      init_stage: InitHandler.init_stage_init_failed(),
       last_error: error_to_reply,
-      pending_call: nil # Clear pending call
+      # Clear pending call
+      pending_call: nil
     }
 
     # Notify owner
@@ -81,9 +90,11 @@ defmodule ExTermbox.PortHandler.SocketHandler do
     state_updates = %{
       socket: nil,
       initialized?: false,
-      init_stage: InitHandler.init_stage_init_failed(), # Call function
+      # Call function
+      init_stage: InitHandler.init_stage_init_failed(),
       last_error: error_to_reply,
-      pending_call: nil # Clear pending call
+      # Clear pending call
+      pending_call: nil
     }
 
     # Notify owner
@@ -93,6 +104,7 @@ defmodule ExTermbox.PortHandler.SocketHandler do
     case pending_call do
       {_command, from} ->
         GenServer.reply(from, {:error, error_to_reply})
+
       nil ->
         :ok
     end
@@ -113,9 +125,9 @@ defmodule ExTermbox.PortHandler.SocketHandler do
 
     # Update state: clear pending call
     state_updates = %{pending_call: nil}
-    
+
     # No timeout change needed
-    {:noreply, state_updates, nil} 
+    {:noreply, state_updates, nil}
   end
 
   # --- Private Helpers (Internal to SocketHandler) --- #
@@ -123,7 +135,9 @@ defmodule ExTermbox.PortHandler.SocketHandler do
   # Processes a single line from the socket
   # Takes the line, the current pending_call tuple, owner PID
   # Returns the updated pending_call tuple (nil if handled)
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp process_socket_line(line, current_pending_call, owner_pid) do
+    # --- BEGIN REVERT Complexity Refactor ---
     case Protocol.parse_socket_line(line) do
       {:ok_response} ->
         handle_ok_response(current_pending_call)
@@ -131,6 +145,7 @@ defmodule ExTermbox.PortHandler.SocketHandler do
       {:ok_cell_response, cell_data} ->
         handle_ok_cell_response(cell_data, current_pending_call)
 
+      # Revert width/height combination
       {:ok_width_response, width} ->
         handle_ok_value_response(:width, width, current_pending_call)
 
@@ -150,47 +165,58 @@ defmodule ExTermbox.PortHandler.SocketHandler do
         handle_unknown_line(raw_line, current_pending_call)
 
       other ->
-        Logger.error("[SocketHandler] Protocol.parse_socket_line unexpected: #{inspect(other)}")
+        Logger.error(
+          "[SocketHandler] Protocol.parse_socket_line unexpected: #{inspect(other)}"
+        )
+
         current_pending_call
     end
+
+    # --- END REVERT Complexity Refactor ---
   end
 
   defp handle_ok_response(current_pending_call) do
     case current_pending_call do
-      {command_key, from} ->
+      {_command_key, from} ->
         # Logger.debug(
         #   "[SocketHandler] OK response for pending cmd: #{inspect(command_key)}"
         # )
         GenServer.reply(from, :ok)
-        nil # Clear pending call
+        # Clear pending call
+        nil
 
       nil ->
         Logger.warning(
           "[SocketHandler] Unexpected OK response (no pending command)."
         )
+
         nil
     end
   end
 
   defp handle_ok_cell_response(cell_data, current_pending_call) do
     case current_pending_call do
-      {{:get_cell, _x, _y} = command_key, from} ->
+      {{:get_cell, _x, _y} = _command_key, from} ->
         # Logger.debug(
         #   "[SocketHandler] OK_CELL response for pending cmd: #{inspect(command_key)} -> #{inspect(cell_data)}"
         # )
         GenServer.reply(from, {:ok, cell_data})
-        nil # Clear pending call
+        # Clear pending call
+        nil
 
       {other_key, _from} ->
-         Logger.warning(
-           "[SocketHandler] Received OK_CELL response, but pending call was #{inspect(other_key)}. Ignoring OK_CELL."
-         )
-         current_pending_call # Keep existing pending call
+        Logger.warning(
+          "[SocketHandler] Received OK_CELL response, but pending call was #{inspect(other_key)}. Ignoring OK_CELL."
+        )
+
+        # Keep existing pending call
+        current_pending_call
 
       nil ->
         Logger.warning(
           "[SocketHandler] Unexpected OK_CELL response (no pending command)."
         )
+
         nil
     end
   end
@@ -202,35 +228,42 @@ defmodule ExTermbox.PortHandler.SocketHandler do
         #   "[SocketHandler] OK_VALUE response for pending cmd: #{inspect(expected_key)} -> #{inspect(value)}"
         # )
         GenServer.reply(from, {:ok, value})
-        nil # Clear pending call
+        # Clear pending call
+        nil
 
       {other_key, _from} ->
-         Logger.warning(
-           "[SocketHandler] Received OK_VALUE(#{inspect(expected_key)}) response, but pending call was #{inspect(other_key)}. Ignoring value."
-         )
-         current_pending_call # Keep existing pending call
+        Logger.warning(
+          "[SocketHandler] Received OK_VALUE(#{inspect(expected_key)}) response, but pending call was #{inspect(other_key)}. Ignoring value."
+        )
+
+        # Keep existing pending call
+        current_pending_call
 
       nil ->
         Logger.warning(
           "[SocketHandler] Unexpected OK_VALUE(#{inspect(expected_key)}) response (no pending command)."
         )
+
         nil
     end
   end
 
   defp handle_error_response(reason, current_pending_call) do
     case current_pending_call do
-      {command_key, from} ->
+      {_command_key, from} ->
         Logger.error(
-          "[SocketHandler] ERROR response '#{reason}' for pending cmd: #{inspect(command_key)}"
+          "[SocketHandler] ERROR response '#{reason}' for pending cmd"
         )
+
         GenServer.reply(from, {:error, reason})
-        nil # Clear pending call
+        # Clear pending call
+        nil
 
       nil ->
         Logger.error(
           "[SocketHandler] Unexpected ERROR response '#{reason}' (no pending command)."
         )
+
         nil
     end
   end
@@ -238,18 +271,25 @@ defmodule ExTermbox.PortHandler.SocketHandler do
   defp handle_event(event_map, owner_pid, current_pending_call) do
     # Logger.info("[SocketHandler] Received Termbox Event: #{inspect(event_map)}") # Keep Info for events
     send(owner_pid, {:termbox_event, event_map})
-    current_pending_call # Keep pending call unchanged
+    # Keep pending call unchanged
+    current_pending_call
   end
 
   defp handle_parse_error(type, raw_data, reason, current_pending_call) do
     Logger.error(
       "[SocketHandler] Failed to parse socket line (type: #{type}, reason: #{inspect(reason)}). Raw: '#{raw_data}'"
     )
-    current_pending_call # Keep pending call unchanged
+
+    # Keep pending call unchanged
+    current_pending_call
   end
 
   defp handle_unknown_line(raw_line, current_pending_call) do
-    Logger.warning("[SocketHandler] Received unknown line from socket: '#{raw_line}'")
-    current_pending_call # Keep pending call unchanged
+    Logger.warning(
+      "[SocketHandler] Received unknown line from socket: '#{raw_line}'"
+    )
+
+    # Keep pending call unchanged
+    current_pending_call
   end
-end 
+end

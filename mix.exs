@@ -37,7 +37,7 @@ defmodule ExTermbox.Mixfile do
       {:earmark_parser, "~> 1.4"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:dialyze, "~> 0.2.0", only: :dev},
-      {:credo, "~> 1.0", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 

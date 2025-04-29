@@ -1,7 +1,11 @@
 defmodule ExTermbox.PortHandler.PortExitHandler do
+  @moduledoc """
+  Handles Port exit (`{:EXIT, port, reason}`) messages for `ExTermbox.PortHandler`.
+  """
   require Logger
   alias ExTermbox.ProcessManager
-  alias ExTermbox.PortHandler.InitHandler # Alias for function calls
+  # Alias for function calls
+  # alias ExTermbox.PortHandler.InitHandler
 
   @doc """
   Handles the unexpected termination of the underlying C port process.
@@ -10,27 +14,35 @@ defmodule ExTermbox.PortHandler.PortExitHandler do
   attempts to reply with an error to any pending caller, cleans up the socket,
   and returns a `:stop` tuple for the PortHandler GenServer.
   """
-  def handle_port_exit(status, state, _failure_stage \\ InitHandler.init_stage_init_failed()) do # Call function in default
+  # Call function in default
+  def handle_port_exit(
+        status,
+        state
+      ) do
     Logger.warning(
       "[PortExitHandler] Port process terminated with status: #{status}. Socket: #{inspect(state.socket)}"
     )
 
     # Close socket if it was open when port exited
     if is_port(state.socket) do
-      Logger.info("[PortExitHandler] Closing orphaned socket: #{inspect(state.socket)}")
-      # Use ProcessManager or direct :gen_tcp call
+      Logger.info(
+        "[PortExitHandler] Closing orphaned socket: #{inspect(state.socket)}"
+      )
+
+      # Use ProcessManager or direct :gen_unix call
       ProcessManager.close_socket(state.socket)
     end
 
     # Update state to indicate failure
     stop_reason = {:port_exited, status}
-    state_updates = %{
+
+    # Update the existing state struct instead of creating a plain map
+    updated_state = %{state |
       port: nil,
-      socket: nil, # Also clear socket if port exits
+      socket: nil,
       initialized?: false,
-      init_stage: InitHandler.init_stage_init_failed(), # Always fail if port exits - Call function
-      last_error: stop_reason,
-      pending_call: nil # Clear pending call
+      stage: :init_failed,
+      pending_call: nil
     }
 
     # Notify owner
@@ -39,7 +51,10 @@ defmodule ExTermbox.PortHandler.PortExitHandler do
     # If there was a pending call, reply with an error
     case state.pending_call do
       {command, from} ->
-        Logger.info("[PortExitHandler] Replying error to pending call for command #{command}")
+        Logger.info(
+          "[PortExitHandler] Replying error to pending call for command #{command}"
+        )
+
         # Use try/rescue as the caller might have already died or timed out
         try do
           GenServer.reply(from, {:error, stop_reason})
@@ -54,7 +69,7 @@ defmodule ExTermbox.PortHandler.PortExitHandler do
         :ok
     end
 
-    # Return the stop tuple with the merged state updates
-    {:stop, stop_reason, state_updates}
+    # Return the stop tuple with the *updated state struct*
+    {:stop, stop_reason, updated_state}
   end
-end 
+end

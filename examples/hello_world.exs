@@ -4,11 +4,11 @@
 #
 #    mix run examples/hello_world.exs
 
-alias ExTermbox.Bindings, as: Termbox
+alias ExTermbox, as: Termbox
 alias ExTermbox.{Cell, EventManager, Event, Position}
 
 # This initializes the termbox application.
-:ok = Termbox.init()
+{:ok, _pid} = Termbox.init()
 
 # In order to react to keyboard, click or resize events, we need to start
 # the event manager and subscribe the current process to any events.
