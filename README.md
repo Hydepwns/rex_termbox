@@ -1,8 +1,5 @@
 # Raxol Revived ExTermbox
 
-[![Hex.pm](https://img.shields.io/hexpm/v/rrex_termbox.svg)](https://hex.pm/packages/rrex_termbox)
-[![Hexdocs.pm](https://img.shields.io/badge/api-hexdocs-brightgreen.svg)](https://hexdocs.pm/rrex_termbox)
-
 An Elixir library for interacting with the terminal via the [termbox](https://github.com/nsf/termbox) C library.
 
 This library manages a separate C helper process (`termbox_port`) and communicates with it using an Elixir Port for initialization and Unix Domain Sockets (UDS) for subsequent commands and events. This provides a more robust alternative to NIF-based approaches.
@@ -17,8 +14,9 @@ For the API Reference, see the `ExTermbox` module: [https://hexdocs.pm/rrex_term
 ### Architecture
 
 ExTermbox starts and manages a C helper program (`termbox_port`). Communication happens as follows:
-1.  **Initialization:** An Elixir Port is used briefly to exchange the path for a Unix Domain Socket (UDS).
-2.  **Runtime:** All subsequent commands (like printing, setting cursor, changing cells) and events (like key presses, resizes) are sent over the UDS connection using a simple text-based protocol.
+
+1. **Initialization:** An Elixir Port is used briefly to exchange the path for a Unix Domain Socket (UDS).
+2. **Runtime:** All subsequent commands (like printing, setting cursor, changing cells) and events (like key presses, resizes) are sent over the UDS connection using a simple text-based protocol.
 
 The public API is exposed primarily through the `ExTermbox` module.
 
@@ -31,7 +29,7 @@ This repository makes use of [Git submodules](https://git-scm.com/book/en/v2/Git
 
 ```bash
 # Make sure to clone *this* repository recursively to include submodules
-git clone --recursive <your-fork-url>
+git clone --recursive https://github.com/Hydepwns/rrex_termbox.git
 ```
 
 When the clone is complete, the `c_src/termbox/` directory should have files in it.
@@ -119,25 +117,24 @@ If you encounter build issues related to Python or `waf`, please ensure you are 
 
 ## Installation
 
-### From Hex
-
-Add `:rrex_termbox` as a dependency in your project's `mix.exs`:
+Add `:rrex_termbox` as a dependency in your project's `mix.exs`, pointing to this GitHub repository:
 
 ```elixir
 def deps do
   [
-    # {:rex_termbox, "~> 0.3"} # Original version (NIF-based)
-    {:rrex_termbox, github: "Hydepwns/rrex_termbox"} # Replace with correct version/source when published
-    # {:rrex_termbox, "~> 1.1.0"} # Example when published to Hex
+    # Note: This package is not yet published on Hex.pm
+    {:rrex_termbox, github: "Hydepwns/rrex_termbox"}
   ]
 end
 ```
 
-The Hex package bundles a compatible version of termbox. Mix compile hooks automatically build the `termbox_port` C helper executable needed by the library. This should happen the first time you build :rrex_termbox (e.g., via `mix deps.compile`).
+You will need standard C build tools (like `gcc` or `clang`, often part of `build-essential` or Xcode Command Line Tools) installed on your system.
 
-So far the build has been tested on macOS and a few Linux distros. Please add an issue if you encounter any problems with the build.
+Mix compile hooks automatically build the `termbox_port` C helper executable needed by the library. This should happen the first time you build :rrex_termbox (e.g., via `mix deps.get` followed by `mix deps.compile` or simply `mix compile`).
 
-### From Source
+The build has been tested on macOS and some Linux distributions. Please open an issue if you encounter build problems.
+
+### Using the Source Directly
 
 To try out the master branch, first clone the repo:
 

@@ -37,6 +37,13 @@ Inshalla, this is the last time I'll have to do this.
 - Resolved various compilation issues and Elixir compiler warnings.
 - Addressed `mix test` TTY/stdin inheritance issues during C process startup.
 - Ensured `tb_init()` is called at the appropriate time in the C process lifecycle.
+- Made command handling case-insensitive in the C port (`strcasecmp`).
+- Added missing 'OK' reply for `DEBUG_SEND_EVENT` command in C port.
+- Fixed recursive call return bug in `EventManager.handle_info`.
+- Corrected regexes in `Protocol.parse_socket_line` (replaced `\\s` with `\s`).
+- Fixed GenServer timeout cancellation in `SocketHandler` (returned `:infinity`).
+- Fixed `KeyError` on termination by using correct struct update syntax in `CallHandler`.
+- Fixed state corruption by correctly merging state updates map in `PortHandler`.
 
 ### Removed
 
