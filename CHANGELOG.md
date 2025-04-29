@@ -2,6 +2,14 @@
 
 Inshalla, this is the last time I'll have to do this.
 
+## [Unreleased]
+
+### Known Issues / TODO
+
+- Resolve compiler warnings about unused private `_parse_*` helper functions in `ExTermbox.Protocol`.
+- Investigate and fix warnings about potentially unreachable clauses (`{:parse_error, ...}`, `{:unknown_line, ...}`) in `ExTermbox.PortHandler.SocketHandler.process_socket_line/3`, possibly due to incomplete return types from `ExTermbox.Protocol.parse_socket_line/1`.
+- Enhance example tests (`test/integration/examples_test.exs`) to verify visual output or behavior beyond just startup.
+
 ## [1.1.2] - 2025-04-30
 
 ### Fixed
