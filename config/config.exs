@@ -1,6 +1,6 @@
 # This file is responsible for configuring your application
-# and its dependencies with the aid of the Mix.Config module.
-use Mix.Config
+# and its dependencies with the aid of the Config module.
+import Config
 
 # This configuration is loaded before any dependency and is restricted
 # to this project. If another project depends on this project, this
@@ -8,15 +8,21 @@ use Mix.Config
 # if you want to provide default values for your application for
 # 3rd-party users, it should be done in your "mix.exs" file.
 
-config :logger, level: :debug
+# config :logger, level: :debug
+
+Config.config(:logger, :console,
+  format: "$time $metadata[$level] $message\n",
+  metadata: [:request_id],
+  level: :debug
+)
 
 # You can configure your application as:
 #
-#     config :rex_termbox, key: :value
+#     config :rrex_termbox, key: :value
 #
 # and access this configuration in your application as:
 #
-#     Application.get_env(:rex_termbox, :key)
+#     Application.get_env(:rrex_termbox, :key)
 #
 # You can also configure a 3rd-party app:
 #
@@ -29,4 +35,7 @@ config :logger, level: :debug
 # Configuration from the imported file will override the ones defined
 # here (which is why it is important to import them last).
 #
-#     import_config "#{Mix.env}.exs"
+# Use Config.config_env() instead of Mix.env()
+# import_config "#{config_env()}.exs"
+
+# Remove the extraneous web config added previously

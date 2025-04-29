@@ -48,7 +48,7 @@ defmodule ExTermbox.EventManagerTest do
       assert :ok = EventManager.subscribe(pid, self())
       assert :ok = EventManager.subscribe(pid, self())
 
-      assert [{:start_polling, pid}] = BindingsStub.calls()
+      assert [{:start_polling, _pid}] = BindingsStub.calls()
     end
 
     test "notifies subscriber of polled events", %{event_manager: pid} do
