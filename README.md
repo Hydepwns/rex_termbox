@@ -3,34 +3,29 @@
 [![Hex.pm](https://img.shields.io/hexpm/v/rrex_termbox.svg)](https://hex.pm/packages/rrex_termbox)
 [![Hexdocs.pm](https://img.shields.io/badge/api-hexdocs-brightgreen.svg)](https://hexdocs.pm/rrex_termbox)
 
-Low-level [termbox](https://github.com/nsf/termbox) bindings for Elixir.
+An Elixir library for interacting with the terminal via the [termbox](https://github.com/nsf/termbox) C library.
+
+This library manages a separate C helper process (`termbox_port`) and communicates with it using an Elixir Port for initialization and Unix Domain Sockets (UDS) for subsequent commands and events. This provides a more robust alternative to NIF-based approaches.
 
 For high-level, declarative terminal UIs in Elixir, see [raxol](https://github.com/Hydepwns/raxol) or it's predecessor [Ratatouille](https://github.com/ndreynolds/ratatouille). It builds on top of
 this library and the termbox API to provide an HTML-like DSL for defining views.
 
-For the API Reference, see: [https://hexdocs.pm/rrex_termbox](https://hexdocs.pm/rrex_termbox).
+For the API Reference, see the `ExTermbox` module: [https://hexdocs.pm/rrex_termbox/ExTermbox.html](https://hexdocs.pm/rrex_termbox/ExTermbox.html).
 
 ## Getting Started
 
-### Termbox bindings
+### Architecture
 
-ExTermbox implements the termbox API functions via NIFs:
+ExTermbox starts and manages a C helper program (`termbox_port`). Communication happens as follows:
+1.  **Initialization:** An Elixir Port is used briefly to exchange the path for a Unix Domain Socket (UDS).
+2.  **Runtime:** All subsequent commands (like printing, setting cursor, changing cells) and events (like key presses, resizes) are sent over the UDS connection using a simple text-based protocol.
 
-- [`ExTermbox.Bindings`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html)
-  - [`init/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#init/0)
-  - [`shutdown/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#shutdown/0)
-  - [`width/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#width/0)
-  - [`height/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#height/0)
-  - [`clear/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#clear/0)
-  - [`present/0`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#present/0)
-  - [`put_cell/1`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#put_cell/1)
-  - [`change_cell/5`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#change_cell/5)
-  - [`poll_event/1`](https://hexdocs.pm/rrex_termbox/ExTermbox.Bindings.html#poll_event/1)
+The public API is exposed primarily through the `ExTermbox` module.
 
 ### Hello World
 
-Let's go through the bundled [hello world example](./examples/hello_world.exs).
-To follow along, clone this repo and edit the example.
+Let's go through a simple example.
+To follow along, clone this repo and save the code below as an `.exs` file (e.g., `hello.exs`).
 
 This repository makes use of [Git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules), so make sure you include them in your clone. In recent versions of git, this can be accomplished by including the `--recursive` flag, e.g.
 
@@ -45,90 +40,76 @@ You can also create an
 Elixir script in any Mix project with `rrex_termbox` in the dependencies list.
 Later, we'll run the example with `mix run <file>`.
 
-In a real project, you'll probably want to use an OTP application with a proper
-supervision tree, but here we'll keep it as simple as possible.
-
-First, some aliases for the modules we'll use.
-
 ```elixir
-alias ExTermbox.Bindings, as: Termbox
-alias ExTermbox.{Cell, EventManager, Event, Position}
-```
+# hello.exs
+defmodule HelloWorld do
+  alias ExTermbox
 
-Next, we initialize the termbox application. This initialization should come
-before any other termbox functions are called. (Otherwise, your program will
-probably crash.)
+  def run do
+    # Start ExTermbox, registering the current process to receive events
+    case ExTermbox.init(self()) do
+      :ok ->
+        IO.puts("ExTermbox initialized successfully.")
+        # Clear the screen
+        :ok = ExTermbox.clear()
 
-```elixir
-:ok = Termbox.init()
-```
+        # Print "Hello, World!" at (0, 0) with default colors
+        :ok = ExTermbox.print(0, 0, :default, :default, "Hello, World!")
 
-In order to react to keyboard, click or resize events later, we need to start
-the event manager and subscribe the current process to any events. The event
-manager is an abstraction over `poll_event/1` that constantly polls for events
-and notifies its subscribers whenever one is received.
+        # Print "(Press <q> to quit)" at (0, 2)
+        :ok = ExTermbox.print(0, 2, :default, :default, "(Press <q> to quit)")
 
-```elixir
-{:ok, _pid} = EventManager.start_link()
-:ok = EventManager.subscribe(self())
-```
+        # Render the changes to the terminal
+        :ok = ExTermbox.present()
 
-To render content to the screen, we use `put_cell/1`. We pass it
-`%Cell{}` structs that each have a `position` and a `ch`.
+        # Wait for the 'q' key event
+        wait_for_quit()
 
-The `position` is a struct representing an (x, y) cartesian coordinate. The
-top-left-most cell of the screen represents the origin (0, 0).
+        # Shut down ExTermbox
+        :ok = ExTermbox.shutdown()
+        IO.puts("ExTermbox shut down.")
 
-The `ch` should be an integer representing the character (e.g., ?a or 97).
-In the example, we're using charlists for this reason.
+      {:error, reason} ->
+        IO.inspect(reason, label: "Error initializing ExTermbox")
+    end
+  end
 
-```elixir
-for {ch, x} <- Enum.with_index('Hello, World!') do
-  :ok = Termbox.put_cell(%Cell{position: %Position{x: x, y: 0}, ch: ch})
+  defp wait_for_quit do
+    receive do
+      # Events are sent as messages to the registered process
+      {:termbox_event, %{type: :key, key: :q}} ->
+        :quit
+      {:termbox_event, event} ->
+        # IO.inspect(event, label: "Received event") # Uncomment to see other events
+        wait_for_quit() # Wait for the next event
+      _other_message ->
+        # IO.inspect(other_message, label: "Received other message")
+        wait_for_quit() # Wait for the next event
+    after
+      10_000 -> IO.puts("Timeout waiting for 'q' key.") # Add a timeout for safety
+    end
+  end
 end
 
-for {ch, x} <- Enum.with_index('(Press <q> to quit)') do
-  :ok = Termbox.put_cell(%Cell{position: %Position{x: x, y: 2}, ch: ch})
-end
+HelloWorld.run()
+
 ```
 
-Since Elixir is a functional language, it's good practice to avoid this sort of
-imperative style in real applications. Instead, you might build and transform a
-canvas defined as map or list of cells. Then, when your canvas is ready for
-rendering, it can be synced to termbox via `put_cell/1` in one sweep. This is
-how the Ratatouille library works.
+In a real application, you'll likely want to integrate `ExTermbox` into an OTP application with a proper supervisor.
 
-Until now, we've only updated termbox's internal buffer. To actually render the
-content to the screen, we need to call `present/0`:
-
-```elixir
-Termbox.present()
-```
-
-When a key is pressed, it'll be sent to us by the event manager. Once we receive
-a 'q' key press, we'll shut down the application.
-
-```elixir
-receive do
-  {:event, %Event{ch: ?q}} ->
-    :ok = Termbox.shutdown()
-end
-```
-
-You can use this event-handling logic to respond to events any way you
-like---e.g., render different content, switch tabs, resize content, etc.
+The `ExTermbox.print/5` function provides a simple way to display strings. For more control over individual cells (characters, foreground/background colors, attributes), use `ExTermbox.change_cell/5`. The `ExTermbox.width/0` and `ExTermbox.height/0` functions can be used to get the terminal dimensions.
 
 Finally, run the example like this:
 
 ```bash
-mix run examples/hello_world.exs
+mix run hello.exs
 ```
 
-You shuld see the text we rendered and be able to quit with 'q'.
+You should see the text we rendered and be able to quit with 'q'.
 
 ## Python Build Compatibility (Python 3.12+)
 
-The version of the `termbox` C library bundled with `:rrex_termbox` v1.0.3 uses an older version of the `waf` build system. This version of `waf` contained code (`import imp`) that is incompatible with Python 3.12 and newer, causing the NIF compilation to fail if a modern Python version is your system default.
+The version of the `termbox` C library bundled with `:rrex_termbox` uses an older version of the `waf` build system. This version of `waf` contained code (`import imp`) that is incompatible with Python 3.12 and newer, causing the C helper compilation to fail if a modern Python version is your system default.
 
 This fork includes a small patch directly within the bundled `waf` scripts (`c_src/termbox/.waf3-2.0.14-e67604cd8962dbdaf7c93e0d7470ef5b/waflib/Context.py`) to replace the incompatible code with its modern equivalent (`importlib`).
 
@@ -145,19 +126,16 @@ Add `:rrex_termbox` as a dependency in your project's `mix.exs`:
 ```elixir
 def deps do
   [
-    # {:rex_termbox, "~> 0.3"} # Original version
-    {:rrex_termbox, "~> 1.0.3"} # @hydepwns updated fork
+    # {:rex_termbox, "~> 0.3"} # Original version (NIF-based)
+    {:rrex_termbox, github: "Hydepwns/rrex_termbox"} # Replace with correct version/source when published
+    # {:rrex_termbox, "~> 1.1.0"} # Example when published to Hex
   ]
 end
 ```
 
-The Hex package bundles a compatible version of termbox. There are some compile
-hooks to automatically build and link a local copy of `termbox` for your
-application. This should happen the first time you build :rrex_termbox (e.g., via
-`mix deps.compile`).
+The Hex package bundles a compatible version of termbox. Mix compile hooks automatically build the `termbox_port` C helper executable needed by the library. This should happen the first time you build :rrex_termbox (e.g., via `mix deps.compile`).
 
-So far the build has been tested on macOS and a few Linux distros. Please add
-an issue if you encounter any problems with the build.
+So far the build has been tested on macOS and a few Linux distros. Please add an issue if you encounter any problems with the build.
 
 ### From Source
 
@@ -171,7 +149,7 @@ cd rrex_termbox # Assuming the directory name matches the repo
 
 The `--recurse-submodules` flag (`--recursive` before Git 2.13) is necessary in
 order to additionally clone the termbox source code, which is required to
-build this project.
+build the C helper program.
 
 Next, fetch the deps:
 
@@ -190,10 +168,10 @@ If you see the application drawn and can trigger events, you're good to go. Use
 
 ## Distribution
 
-Building a standalone executable for applications using `:rrex_termbox` requires some special consideration due to the included NIF (Native Implemented Function) for the `termbox` C library.
+Building a standalone executable for applications using `:rrex_termbox` requires some special consideration due to the included C helper program (`termbox_port`) which needs to be packaged alongside your Elixir application.
 
-Standard Elixir tools like `escript` are **not** suitable because they do not correctly package the necessary shared object (`.so`) file located in the `priv/` directory.
+Standard Elixir tools like `escript` are **not** suitable because they do not correctly package the necessary helper executable located in the `priv/` directory after compilation.
 
-The recommended approach for creating distributable releases is to use **[Distillery](https://github.com/bitwalker/distillery)** or the built-in Elixir **[Releases](https://hexdocs.pm/mix/Mix.Tasks.Release.html)**. These tools are designed to handle NIFs correctly and will package your application along with the Erlang Runtime System (ERTS) and the compiled `termbox` NIF into a self-contained bundle.
+The recommended approach for creating distributable releases is to use **[Distillery](https://github.com/bitwalker/distillery)** or the built-in Elixir **[Releases](https://hexdocs.pm/mix/Mix.Tasks.Release.html)**. These tools are designed to handle external programs and assets correctly. They will package your application, the Erlang Runtime System (ERTS), and the compiled `termbox_port` helper into a self-contained bundle.
 
-Consult the documentation for Distillery or Elixir Releases for specific instructions on configuring your project for release builds.
+Consult the documentation for Distillery or Elixir Releases for specific instructions on configuring your project for release builds, ensuring the `priv/termbox_port` executable is included in the release package.
