@@ -15,8 +15,8 @@ Implement reliable communication between the Elixir `ExTermbox` library and its 
 
 ## Current Status (Updated)
 
-- **Handshake Changed:** Initial Port handshake (`GET_SOCKET_PATH\\n` trigger) removed due to `mix test` TTY/stdin inheritance issues. C process now sends `OK <path>\\n` immediately on stdout after starting. Path changed from `/tmp/` to relative `./` (hardcoded for now).
-- **Basic UDS Commands Implemented & Verified:**
+- **Handshake Changed:** Initial Port handshake (`GET_SOCKET_PATH\n` trigger) removed due to `mix test` TTY/stdin inheritance issues. C process now sends `OK <path>\n` immediately on stdout after starting. Path changed from `/tmp/` to relative `./` (hardcoded for now).
+- **Basic UDS Commands Implemented & Integration Tests Passing (Except macOS Beta):**
   - Elixir (`PortHandler`, `ExTermbox`) and C (`termbox_port.c`, `Protocol`) logic for sending commands and receiving responses over UDS is implemented for:
     - `present`
     - `clear`
@@ -45,6 +45,7 @@ Implement reliable communication between the Elixir `ExTermbox` library and its 
   - Attempts using `:socket.connect({:local, path_binary}, 0, opts)` fail with `:badarg`.
   - Attempts using `:socket.connect({:local, path_charlist}, 0, opts)` also fail with `:badarg`.
   - **Conclusion:** This appears to be an incompatibility specific to macOS 15.4.1 Beta and Erlang/OTP's UDS client implementation (`:gen_unix`/:`socket`). Tests on standard platforms (Linux, stable macOS) are expected to pass. Local testing failure is NOT considered a blocker for further development assuming portability.
+  - **macOS Beta Issue:** Integration tests still fail during `ExTermbox.init/1` on macOS 15.4.1 (Beta) with Erlang OTP 26/27 because the `:gen_tcp` client cannot establish a UDS connection. This is deferred.
 
 ## Issues Encountered & Resolved / In Progress
 
@@ -55,17 +56,25 @@ Implement reliable communication between the Elixir `ExTermbox` library and its 
 - **Elixir Compiler Warnings:** Warnings for range steps, charlist syntax, and undefined function call appeared after updates. Resolved.
 - **~~`PortHandler` Stuck (In Progress):~~ Initial Buffer Issue:** Resolved/Masked by other fixes.
 - **UDS Connection Failure (macOS 15.4.1 Beta Specific):** Elixir (`PortHandler` via `ProcessManager`) consistently fails to connect to the C process UDS socket *on the specific macOS beta development environment*. Deferred.
+- **Integration Test Timeouts/Crashes:** Resolved through a series of fixes:
+  - C port case-sensitivity (`strcasecmp`).
+  - C port missing reply for `DEBUG_SEND_EVENT`.
+  - `EventManager` recursive `handle_info` return.
+  - `Protocol` regex parsing (`\s` vs `\\s`).
+  - `SocketHandler` GenServer timeout cancellation (`:infinity`).
+  - `CallHandler` state struct update (`%State{... | ...}`).
+  - `PortHandler` state merging (`Map.merge`).
 
 ## Confirmed Hypothesis
 
 - Reading `stdin` in the C Port process is unreliable when run under `mix test`.
-- Simple immediate stdout response (`OK <path>\\n`) from C process upon startup is captured by Elixir Port.
+- Simple immediate stdout response (`OK <path>\n`) from C process upon startup is captured by Elixir Port.
 - `tb_init()` requires a TTY or specific environment setup, failing when called too early.
 - UDS (`:gen_unix` / `socket`, `bind`, `listen`, `accept`) is suitable for subsequent communication *on standard platforms*. **Hypothesis Invalidated (for client connect on macOS 15.4.1 Beta):** Standard Erlang UDS connection methods (`:gen_unix`, `:socket`) are failing on this specific platform/version combination.
 
 ## Next Steps (Local test failures on macOS Beta deferred)
 
-1. **(Optional/Deferred) Revisit macOS Beta UDS Issue:** Investigate `:local_tcp.getaddrs/2` / `:socket.connect` failures on macOS 15.4.1+ if desired later.
+1. **(Optional/Deferred) Revisit macOS Beta UDS Issue:** Investigate `:gen_tcp.connect` failures for UDS on macOS 15.4.1+ if desired later.
 2. **Implement Remaining Commands:**
     - Add Elixir and C logic for other necessary Termbox functions (`set_input_mode`, `set_output_mode`, etc.) following the established UDS command/response pattern.
 3. **Implement Event Handling:**
