@@ -5,6 +5,8 @@ defmodule ExTermbox.PortHandler.State do
   defstruct [
     # The Port process identifier, nil if not started or crashed
     port: nil,
+    # The ExPTY process identifier (replaces port when using ExPTY)
+    expty_pid: nil,
     # The Socket (:gen_tcp socket) for UDS communication, nil if not connected
     socket: nil,
     # The PID of the owner process (usually the process that called start_link)
@@ -22,6 +24,7 @@ defmodule ExTermbox.PortHandler.State do
 
   @type t :: %__MODULE__{
           port: :erlang.port() | nil,
+          expty_pid: pid() | nil,
           socket: :inet.socket() | nil,
           owner: pid() | nil,
           stage: :idle | :port_started | :socket_connecting | :socket_connected | :init_completed,

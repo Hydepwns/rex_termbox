@@ -62,10 +62,10 @@ defmodule ExTermbox.PortHandler.SocketHandler do
   def handle_socket_closed(pending_call, owner_pid) do
     Logger.warning("[SocketHandler] UDS socket connection closed by C process.")
 
-    stop_reason = :normal
+    _stop_reason = :normal
     error_to_reply = :socket_closed
 
-    state_updates = %{
+    _state_updates = %{
       socket: nil,
       initialized?: false,
       # Call function
@@ -84,7 +84,7 @@ defmodule ExTermbox.PortHandler.SocketHandler do
       nil -> :ok
     end
 
-    {:stop, stop_reason, state_updates}
+    {:stop, {:shutdown, :c_process_exited}, %{socket: nil, pending_call: nil}}
   end
 
   # Helper for handle_info({:tcp_error, socket, reason}) when connected
@@ -306,4 +306,7 @@ defmodule ExTermbox.PortHandler.SocketHandler do
     # Keep pending call unchanged
     current_pending_call
   end
+
+  # --- Cleanup ---
+
 end

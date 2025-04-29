@@ -7,11 +7,11 @@ defmodule ExTermbox.Protocol do
 
   # --- BEGIN ADD Regexes ---
   @ok_regex ~r/^OK$/
-  @error_regex ~r/^ERROR\s+(.*)$/
-  @ok_cell_regex ~r/^OK_CELL\s+(\S+)\s+(\S+)\s+(.+?)\s+(\S+)\s+(\S+)$/
-  @ok_width_regex ~r/^OK_WIDTH\s+(\S+)$/
-  @ok_height_regex ~r/^OK_HEIGHT\s+(\S+)$/
-  @event_regex ~r/^EVENT\s+(.*)$/
+  @error_regex ~r/^ERROR\s+(\S+)$/
+  @ok_cell_regex ~r/^OK_CELL\s+(-?\d+)\s+(-?\d+)\s+(.+)\s+(\d+)\s+(\d+)$/
+  @ok_width_regex ~r/^OK_WIDTH\s+(\d+)$/
+  @ok_height_regex ~r/^OK_HEIGHT\s+(\d+)$/
+  @event_regex ~r/^EVENT\s+(\{.*\})$/
   # --- END ADD Regexes ---
 
   # --- BEGIN ADD Command Formatting ---
@@ -96,44 +96,43 @@ defmodule ExTermbox.Protocol do
   # Parses a complete line received from the C process via the socket
   # Returns a tuple indicating the line type and parsed data.
   def parse_socket_line(line) do
-    trimmed_line = String.trim(line)
-    # Logger.debug("Protocol parsing Socket Line: '#{trimmed_line}'")
+    cond do
+      Regex.match?(@ok_regex, line) ->
+        {:ok_response}
 
-    # --- BEGIN REFACTOR parse_socket_line (Fix Guard Error) ---
-    # Check for simple OK case first, as Regex.match? cannot be in guard
-    if Regex.match?(@ok_regex, trimmed_line) do
-      _parse_ok()
-    else
-      # Handle other cases using Regex.run (which is not in a guard here)
-      cond do
-        captures = Regex.run(@error_regex, trimmed_line) ->
-          # ["ERROR ...", "reason"]
-          _parse_error(captures |> Enum.at(1))
+      Regex.run(@ok_width_regex, line, capture: :all_but_first) ->
+        # \\ [width_s] is safe due to regex \d+
+        [width_s] = Regex.run(@ok_width_regex, line, capture: :all_but_first)
+        {:ok_width_response, String.to_integer(width_s)}
 
-        captures = Regex.run(@ok_cell_regex, trimmed_line) ->
-          # ["OK_CELL ...", x_s, y_s, char_utf8, fg_s, bg_s]
-          _parse_ok_cell(captures |> Enum.drop(1))
+      Regex.run(@ok_height_regex, line, capture: :all_but_first) ->
+        [height_s] = Regex.run(@ok_height_regex, line, capture: :all_but_first)
+        {:ok_height_response, String.to_integer(height_s)}
 
-        captures = Regex.run(@ok_width_regex, trimmed_line) ->
-          # ["OK_WIDTH ...", width_s]
-          _parse_ok_width(captures |> Enum.at(1))
+      Regex.run(@ok_cell_regex, line, capture: :all_but_first) ->
+        [x_s, y_s, char_utf8, fg_s, bg_s] = Regex.run(@ok_cell_regex, line, capture: :all_but_first)
+        cell_data = %{
+          x: String.to_integer(x_s),
+          y: String.to_integer(y_s),
+          # char: char_utf8, # Keep as UTF-8 string
+          char: char_utf8,
+          fg: String.to_integer(fg_s),
+          bg: String.to_integer(bg_s)
+        }
+        {:ok_cell_response, cell_data}
 
-        captures = Regex.run(@ok_height_regex, trimmed_line) ->
-          # ["OK_HEIGHT ...", height_s]
-          _parse_ok_height(captures |> Enum.at(1))
+      Regex.run(@event_regex, line, capture: :all_but_first) ->
+        [json_str] = Regex.run(@event_regex, line, capture: :all_but_first)
+        parse_event_json(json_str)
 
-        captures = Regex.run(@event_regex, trimmed_line) ->
-          # ["EVENT ...", event_data]
-          # Pass original for logging
-          _parse_event_line(captures |> Enum.at(1), trimmed_line)
+      Regex.run(@error_regex, line, capture: :all_but_first) ->
+        [reason_s] = Regex.run(@error_regex, line, capture: :all_but_first)
+        {:error_response, String.to_atom(reason_s)}
 
-        true ->
-          # Fallback for unknown format
-          _parse_unknown(trimmed_line)
-      end
+      true ->
+        Logger.warning("[Protocol] Unparseable line received: '#{line}'")
+        {:unparseable, line}
     end
-
-    # --- END REFACTOR parse_socket_line (Fix Guard Error) ---
   end
 
   # --- BEGIN ADD Private Helper Functions for Parsing ---
@@ -148,32 +147,23 @@ defmodule ExTermbox.Protocol do
     {:error_response, reason}
   end
 
-  defp _parse_ok_cell([x_s, y_s, char_utf8, fg_s, bg_s]) do
+  defp _parse_ok_cell(x_s, y_s, char_s, fg_s, bg_s) do
     with {:ok, x} <- parse_int(x_s, :x),
          {:ok, y} <- parse_int(y_s, :y),
-         # Char is already UTF-8 string from C
-         {:ok, fg} <- parse_uint(fg_s, :fg),
-         {:ok, bg} <- parse_uint(bg_s, :bg) do
-      # Logger.debug("Protocol matched 'OK_CELL': x=#{x}, y=#{y}, char='#{char_utf8}', fg=#{fg}, bg=#{bg}")
-      cell_data = %{
-        x: x,
-        y: y,
-        # Keep as string
-        char: char_utf8,
-        fg: fg,
-        bg: bg
-      }
-
-      {:ok_cell_response, cell_data}
+         # Char is already UTF8 string, no need to handle codepoint
+         {:ok, fg} <- parse_int(fg_s, :fg),
+         {:ok, bg} <- parse_int(bg_s, :bg) do
+      # Logger.debug(
+      #   "Protocol matched 'OK_CELL': x=#{x}, y=#{y}, char='#{char_s}', fg=#{fg}, bg=#{bg}"
+      # )
+      {:ok_cell_response, %{x: x, y: y, char: char_s, fg: fg, bg: bg}}
     else
       error ->
-        original_data = "#{x_s} #{y_s} #{char_utf8} #{fg_s} #{bg_s}"
-
         Logger.error(
-          "Protocol failed to parse OK_CELL data '#{original_data}': #{inspect(error)}"
+          "Protocol failed to parse OK_CELL data '#{x_s} #{y_s} #{char_s} #{fg_s} #{bg_s}': #{inspect(error)}"
         )
 
-        {:parse_error, :ok_cell, original_data, error}
+        {:parse_error, :ok_cell, {x_s, y_s, char_s, fg_s, bg_s}, error}
     end
   end
 
@@ -217,19 +207,38 @@ defmodule ExTermbox.Protocol do
     end
   end
 
-  defp _parse_event_line(event_data, _original_line) do
-    # Logger.debug("Protocol matched 'EVENT data': #{event_data}")
-    case parse_event(event_data) do
-      {:ok, event_map} ->
-        # Logger.debug("Protocol decoded event JSON: #{inspect(event_map)}")
-        {:event, event_map}
+  defp _parse_event_line(event_json, _original_line) do
+    # Logger.debug("Protocol matched 'EVENT JSON': #{event_json}")
+    # Use Jason (or similar) to decode the JSON string
+    case Jason.decode(event_json) do
+      {:ok, event_data_map_str_keys} ->
+        # Convert integer values from C to Elixir atoms where appropriate
+        # Assume keys are strings: "type", "mod", "key", "ch", "w", "h", "x", "y"
+        try do
+          event_map_atom_keys = %{
+            type: map_event_type(event_data_map_str_keys["type"]),
+            mod: map_event_mod(event_data_map_str_keys["mod"]),
+            key: map_event_key(event_data_map_str_keys["key"]),
+            ch: event_data_map_str_keys["ch"],
+            w: event_data_map_str_keys["w"],
+            h: event_data_map_str_keys["h"],
+            x: event_data_map_str_keys["x"],
+            y: event_data_map_str_keys["y"]
+          }
+          # Logger.debug("Protocol decoded event JSON: #{inspect(event_map_atom_keys)}")
+          {:event, event_map_atom_keys}
+        rescue e in KeyError -> 
+          Logger.error(
+            "Protocol failed to map event fields from JSON '#{event_json}': Missing key #{inspect(e.key)}"
+          )
+          {:parse_error, :event_map, event_json, :missing_key}
+        end
 
       {:error, reason} ->
         Logger.error(
-          "Protocol failed to parse event data '#{event_data}': #{inspect(reason)}"
+          "Protocol failed to decode event JSON '#{event_json}': #{inspect(reason)}"
         )
-
-        {:parse_error, :event, event_data, reason}
+        {:parse_error, :event_json, event_json, reason}
     end
   end
 
@@ -239,6 +248,62 @@ defmodule ExTermbox.Protocol do
     )
 
     {:unknown_line, trimmed_line}
+  end
+
+  # Helper to parse the JSON-like event string
+  defp parse_event_json(json_str) do
+    try do
+      # Jason is likely overkill, use basic string parsing or regex if format is stable
+      # Example using manual parsing (adjust based on exact C format):
+      # EVENT {"type":1, "mod":0, "key":65, "ch":97, "w":0, "h":0, "x":0, "y":0}
+      data = parse_simple_json_like(json_str)
+
+      # Convert keys to atoms and values to correct types
+      event_map = Enum.into(data, %{}, fn {k, v} -> {String.to_atom(k), v} end)
+
+      # Convert integer type back to atom for consistency?
+      # Maybe not, keep integers as C sends them.
+      # type_atom = Constants.event_type_atom(Map.get(event_map, :type))
+      # event_map = Map.put(event_map, :type, type_atom)
+
+      # Convert atoms back to constants if needed (e.g., for event type)
+      # Assuming C side sends integers for type, mod, key, ch
+      # If C sends names, we need a lookup here.
+      {:event, event_map}
+    rescue
+      e ->
+        Logger.error("[Protocol] Failed to parse event JSON '#{json_str}': #{inspect(e)}")
+        {:error, :invalid_event_format}
+        # {:unparseable, json_str} # Return specific error
+    end
+  end
+
+  # Extremely basic parser for the specific {"key":value, ...} format
+  # WARNING: Very fragile, assumes simple integer values and double-quoted keys
+  defp parse_simple_json_like(str) do
+    str
+    |> String.trim("{}") # Trim braces first
+    |> String.split(",", trim: true)
+    |> Enum.map(fn pair ->
+      # Use String.split/3 with parts: 2 for safety
+      case String.split(pair, ":", parts: 2, trim: true) do
+        [key, value] ->
+          key_trimmed = String.trim(key, "\"")
+          # Attempt integer conversion, handle potential errors
+          case Integer.parse(String.trim(value)) do
+            {int_val, ""} -> {key_trimmed, int_val}
+            _ ->
+              Logger.error("Failed to parse integer for field #{key_trimmed} from '#{value}'") # Log error
+              {key_trimmed, String.trim(value)} # Keep original value on parse error
+          end
+        _ ->
+          # Handle cases where splitting by ':' fails unexpectedly
+          Logger.warning("[Protocol] Malformed key-value pair in event: '#{pair}'")
+          {nil, nil} # Or some other error indicator
+      end
+    end)
+    |> Enum.reject(&match?({nil, nil}, &1)) # Remove malformed pairs
+    |> Map.new()
   end
 
   # --- END ADD Private Helper Functions for Parsing ---
@@ -278,11 +343,12 @@ defmodule ExTermbox.Protocol do
   defp map_event_type(_other), do: :unknown
 
   # TB_MOD_*
+  defp map_event_mod(0), do: :none # Explicitly map 0 to :none
   defp map_event_mod(1), do: :alt
   # Assuming TB_MOD_MOTION is 2
   defp map_event_mod(2), do: :motion
   # No modifier or unknown
-  defp map_event_mod(_other), do: nil
+  defp map_event_mod(_other), do: nil # Keep nil for other unknown/invalid
 
   # TB_KEY_*
   defp map_event_key(0xFFFF), do: :f1
@@ -366,11 +432,32 @@ defmodule ExTermbox.Protocol do
   defp map_event_key(0x20), do: :space
   # Or :ctrl_8
   defp map_event_key(0x7F), do: :backspace2
+
+  # Convert the integer key from JSON back to an atom *before* mapping
+  # Or handle the atom mapping directly in the key mapping function if preferred
+  # For simplicity, let's assume key is passed as integer from C
   defp map_event_key(other_key), do: {:unknown_key, other_key}
 
   # --- BEGIN ADD DEBUG_SEND_EVENT Format ---
-  def format_debug_send_event_command(type, mod, key, ch, w, h, x, y) do
-    "DEBUG_SEND_EVENT #{type} #{mod} #{key} #{ch} #{w} #{h} #{x} #{y}"
+  # Format: DEBUG_SEND_EVENT type mod key ch w h x y
+  def format_debug_send_event_command(type_a, mod_i, key_i, ch_i, w_i, h_i, x_i, y_i)
+      when is_atom(type_a) and is_integer(mod_i) and is_integer(key_i) and is_integer(ch_i) and
+             is_integer(w_i) and is_integer(h_i) and is_integer(x_i) and is_integer(y_i) do
+    type_i = ExTermbox.Constants.event_type(type_a)
+    # mod_i = ExTermbox.Constants.mod(mod_a) # Mod is already an integer, no lookup needed
+
+    # Ensure basic validity, though C side might do more checks
+    valid_type? = type_i in Map.values(ExTermbox.Constants.event_types())
+    # Mod validity is less critical to check here, C side handles it
+    # valid_mod? = mod_i in Map.values(Constants.mod_map())
+
+    if valid_type? do
+      # Pass integers directly
+      command_str = "DEBUG_SEND_EVENT #{type_i} #{mod_i} #{key_i} #{ch_i} #{w_i} #{h_i} #{x_i} #{y_i}"
+      {:ok, command_str <> "\n"}
+    else
+      {:error, :invalid_event_type}
+    end
   end
 
   # --- END ADD DEBUG_SEND_EVENT Format ---

@@ -383,20 +383,43 @@ defmodule ExTermbox do
 
   Requires the PID or registered name of the PortHandler process.
   """
-  @spec debug_send_event(pid | atom, map) :: :ok | {:error, any}
-  def debug_send_event(pid_or_name, event_map) when is_map(event_map) do
-    command_key = :debug_send_event
-    # Extract fields and call the correct format function
-    command_string = ExTermbox.Protocol.format_debug_send_event_command(
-      Map.get(event_map, :type, 0),
-      Map.get(event_map, :mod, 0),
-      Map.get(event_map, :key, 0),
-      Map.get(event_map, :ch, 0),
-      Map.get(event_map, :w, 0),
-      Map.get(event_map, :h, 0),
-      Map.get(event_map, :x, 0),
-      Map.get(event_map, :y, 0)
-    )
+  @spec debug_send_event(
+        pid | atom,
+        atom(), atom(), atom(), integer(), integer(), integer(), integer(), integer()
+      ) :: :ok | {:error, any}
+  def debug_send_event(
+        pid_or_name,
+        type_atom, mod_atom, key_atom, ch \\ 0, w \\ 0, h \\ 0, x \\ 0, y \\ 0
+      ) do
+    # Convert atoms to integers needed by the protocol command string
+    # type_i = Constants.event_type(type_atom) # type_atom is passed directly
+    mod_i = Constants.mod(mod_atom)
+    key_i = Constants.key(key_atom)
+
+    # Protocol formatter expects type as atom, others as integers
+    case Protocol.format_debug_send_event_command(type_atom, mod_i, key_i, ch, w, h, x, y) do
+      {:ok, command_str} ->
+        # ExTermbox.PortHandler.command(pid_or_name, :debug_send_event, command_str)
+        # Send the command via GenServer.call to the PortHandler
+        GenServer.call(pid_or_name, {:command, :debug_send_event, command_str})
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  [Debug] Causes the C helper process to exit immediately.
+  FOR TESTING ONLY.
+
+  Requires the PID or registered name of the PortHandler process.
+  """
+  @spec debug_crash(pid | atom) :: :ok | {:error, any}
+  def debug_crash(pid_or_name) do
+    command_key = :debug_crash
+    command_string = "DEBUG_CRASH\n" # Simple command, no args
+    # We might not get a reply if the process crashes before replying.
+    # Consider using cast or handling call timeout/exit.
+    # Let's try call first, and the test can handle the potential `:noproc` error.
     call_genserver(pid_or_name, {:command, command_key, command_string})
   end
 

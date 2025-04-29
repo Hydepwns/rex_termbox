@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <unistd.h> // For getpid(), unlink(), isatty(), read(), write()
+#include <unistd.h> // For getpid(), unlink(), isatty(), read(), write(), setsid()
 #include <termios.h> // Add this include
 #include <sys/socket.h> // For socket programming
 #include <sys/un.h>     // For Unix domain sockets
@@ -11,10 +11,11 @@
 #include <stdint.h>    // For uint16_t
 #include <arpa/inet.h> // For htons, ntohs
 #include <sys/select.h> // For select()
-#include <fcntl.h>      // For fcntl, F_GETFL, O_NONBLOCK
+#include <fcntl.h>      // For fcntl, F_GETFL, O_NONBLOCK, O_RDWR
 // Remove select/time/errno includes
 #include <strings.h>    // For strcasecmp
 #include "termbox.h" // Assuming termbox.h is accessible
+#include <sys/ioctl.h> // For ioctl(), TIOCSCTTY
 
 #define MAX_LINE_LENGTH 4096
 #define MAX_ARGS 10
@@ -215,9 +216,15 @@ int main() {
 
 
     // Clean up termbox before exiting (already present in run_main_loop or after)
-    // log_message("Port process exiting."); // Keep exit
+    log_message("Port process exiting."); // Keep exit
     fprintf(stderr, "termbox_port C_LOG: Port process exiting.\n");
     fflush(stderr);
+
+    // --- ADD SOCKET FILE CLEANUP ---
+    log_message("Cleaning up socket file...");
+    unlink(actual_socket_path); // Ensure socket file is removed on exit
+    // --- END SOCKET FILE CLEANUP ---
+
     return result == 0 ? 0 : 1; // Return 0 on success, 1 on error from loop
 }
 
@@ -243,7 +250,6 @@ int run_main_loop(int listen_fd) {
 
     // --- Redirect stdio to /dev/null before tb_init ---
     // Attempt to prevent TB_EPIPE_TRAP_ERROR in test environments
-    #include <fcntl.h> // Include needed for O_RDWR
     int dev_null_fd = open("/dev/null", O_RDWR);
     if (dev_null_fd != -1) {
         // Don't close if these are the socket fds (highly unlikely)
@@ -806,14 +812,32 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'DEBUG_SEND_EVENT' command expects 8 arguments (type mod key ch w h x y).");
             write_socket_line(client_fd, "ERROR invalid_args_debug_send_event");
         }
+    } else if (strcasecmp(cmd, "DEBUG_CRASH") == 0) {
+        log_message("Received DEBUG_CRASH command. Exiting immediately.");
+        // Optional: Send a final message? Probably not useful if it's crashing.
+        // write_socket_line(client_fd, "OK_CRASHING");
+        // Force exit (can use exit(1) for error or abort() for core dump)
+        exit(1);
+        // Code below won't be reached, but keeps compiler happy if using abort()
+        // return 1; // Indicate an error occurred causing loop exit
     } else if (strcasecmp(cmd, "shutdown") == 0) {
-        log_message("Shutdown command received. Acknowledging and preparing to exit loop.");
-        write_socket_line(client_fd, "OK"); // Acknowledge shutdown request
-        return 1; // Signal to exit the main loop
+        if (argc == 1) {
+            log_message("Received shutdown command. Shutting down termbox.");
+#ifndef TESTING_WITHOUT_TERMBOX
+            tb_shutdown();
+#endif
+            write_socket_line(client_fd, "OK"); // Acknowledge shutdown request
+            return 1; // Signal to exit the main loop
+        } else {
+            log_message("Error: 'shutdown' command expects 0 arguments.");
+            write_socket_line(client_fd, "ERROR invalid_args_shutdown");
+            return 1; // Indicate error
+        }
     } else {
         snprintf(log_buf, sizeof(log_buf), "Error: Unknown command '%s'", cmd);
         log_message(log_buf);
         write_socket_line(client_fd, "ERROR unknown_command");
+        return 1; // Indicate error
     }
 
     return 0; // Indicate success, continue loop

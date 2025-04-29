@@ -116,6 +116,13 @@ defmodule ExTermbox.Constants do
     reverse: 0x0400
   }
 
+  @type modifier :: constant
+  @modifiers %{
+    none: 0, # Added for completeness
+    alt: 1,
+    motion: 2
+  }
+
   @type event_type :: constant
   @event_types %{
     key: 1,
@@ -239,6 +246,26 @@ defmodule ExTermbox.Constants do
   def event_type(name), do: Map.fetch!(@event_types, name)
 
   @doc """
+  Retrieves the mapping of modifier constants.
+  """
+  @spec modifiers() :: %{atom => modifier}
+  def modifiers, do: @modifiers
+
+  @doc """
+  Retrieves a modifier constant by name
+
+  ## Examples
+
+      iex> mod(:alt)
+      1
+      iex> mod(:none)
+      0
+
+  """
+  @spec mod(atom) :: modifier
+  def mod(name), do: Map.fetch!(@modifiers, name)
+
+  @doc """
   Retrieves the mapping of error code constants.
   """
   @spec error_codes() :: %{atom => error_code}
@@ -251,6 +278,8 @@ defmodule ExTermbox.Constants do
 
       iex> error_code(:unsupported_terminal)
       -1
+      iex> error_code(:pipe_trap_error)
+      -3
 
   """
   @spec error_code(atom) :: error_code
@@ -269,8 +298,8 @@ defmodule ExTermbox.Constants do
 
       iex> input_mode(:esc)
       1
-      iex> input_mode(:esc_with_mouse)
-      5
+      iex> input_mode(:mouse)
+      4
 
   """
   @spec input_mode(atom) :: input_mode
@@ -287,6 +316,8 @@ defmodule ExTermbox.Constants do
 
   ## Examples
 
+      iex> output_mode(:normal)
+      1
       iex> output_mode(:term_256)
       2
 

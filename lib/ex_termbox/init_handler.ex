@@ -189,7 +189,9 @@ defmodule ExTermbox.InitHandler do
     case :binary.split(rest, ["\n"], [:global]) do
       [path_binary, ""] -> # Expect exactly the path and an empty string after the newline
          # Convert path to string, assuming UTF-8 (common for paths)
-        path_string = :binary.bin_to_list(path_binary) |> List.to_string()
+        path_string = path_binary
+                      |> :binary.bin_to_list()
+                      |> List.to_string()
         {:ok, path_string}
       _ ->
         Logger.error("[InitHandler] Invalid port output format (no newline or extra data): #{inspect(rest)}")

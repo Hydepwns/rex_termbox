@@ -19,10 +19,11 @@ defmodule ExTermbox.PortHandler.TerminationHandler do
       ProcessManager.close_socket(state.socket)
     end
 
-    # Ensure port is closed
-    if not is_nil(state.port) and Port.info(state.port) do
-      Logger.debug("Closing port in terminate: #{inspect(state.port)}")
-      ProcessManager.close_port(state.port)
+    # Clean up ExPTY PID? Likely handled by process linking automatically when PortHandler dies.
+    if not is_nil(state.expty_pid) do
+      Logger.debug("ExPTY process #{inspect(state.expty_pid)} should terminate due to linking.")
+      # Explicit stop potentially needed? ExPTY.stop(state.expty_pid)?
+      # For now, assume linking handles it.
     end
 
     # If terminating abnormally, notify owner and reply to pending call

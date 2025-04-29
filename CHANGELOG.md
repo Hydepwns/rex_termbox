@@ -2,6 +2,35 @@
 
 Inshalla, this is the last time I'll have to do this.
 
+## [1.1.2] - 2025-04-30
+
+### Fixed
+
+- Resolved `tb_init()` failure when the C helper process (`termbox_port`) was launched via Elixir Ports. The underlying `termbox` library requires a controlling TTY, which was not available in the standard Port environment. This was fixed by replacing the Port spawning mechanism with the `ExPTY` library.
+
+### Changed
+
+- Replaced direct use of `Port.open` in `ExTermbox.PortHandler` with `ExPTY.spawn`.
+- Refactored `ExTermbox.PortHandler` to handle process interaction via `ExPTY` callbacks (`on_data`, `on_exit`) instead of Port messages.
+- Added `:expty_pid` field to `ExTermbox.PortHandler.State` and removed the `:port` field.
+- Implemented buffering for data received from `ExPTY` during initialization using `ExTermbox.Buffer`.
+- Updated `ExTermbox.PortHandler` shutdown logic to send a `"shutdown\n"` command via the UDS socket instead of attempting to close an Erlang Port.
+- Reverted previous attempts to manually acquire a TTY in `c_src/termbox_port.c` using `setsid` and `ioctl`; the C code now uses the standard `tb_init()` again, relying on the pty environment provided by `ExPTY`.
+
+### Added
+
+- Added `expty` as a dependency.
+
+## [1.1.1] - 2025-04-30
+
+### Fixed
+
+- Resolved integration test failures:
+  - Added `Process.flag(:trap_exit, true)` to the C process crash test (`test/integration/ex_termbox_integration_test.exs`) to prevent the test process from exiting prematurely.
+  - Improved JSON-like event string parsing in `ExTermbox.Protocol.parse_simple_json_like/1` to correctly handle braces and potential integer conversion errors, fixing the synthetic event test.
+- Refined `ExTermbox.PortHandler.TerminationHandler` to remove outdated Erlang Port cleanup logic, relying on standard process linking for `ExPTY` process termination.
+- Removed unused private helper functions (`_parse_*`) from `ExTermbox.Protocol` to resolve compiler warnings.
+
 ## [1.1.0] - 2025-04-29
 
 ### Changed (Breaking)

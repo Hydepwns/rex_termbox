@@ -4,7 +4,7 @@ defmodule ExTermbox.Mixfile do
   def project do
     [
       app: :rrex_termbox,
-      version: "1.1.0",
+      version: "1.1.2",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
       compilers: [:elixir_make | Mix.compilers()],
@@ -34,6 +34,7 @@ defmodule ExTermbox.Mixfile do
   defp deps do
     [
       {:elixir_make, "~> 0.8", runtime: false},
+      {:expty, "~> 0.2"},
       {:earmark_parser, "~> 1.4"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:dialyze, "~> 0.2.0", only: :dev},

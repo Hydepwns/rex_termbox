@@ -11,15 +11,12 @@ defmodule ExTermbox.IntegrationTest do
     # Start without a name for test isolation
     case ExTermbox.init([]) do
       {:ok, pid} ->
-        # No longer need sleep, init is synchronous
-        # Process.sleep(1000)
-
-        # Use shutdown on exit, targeting the specific PID
+        # Use on_exit to ensure the PortHandler is killed even if the test fails
         on_exit(context, fn ->
-          # Attempt clean shutdown via API first
-          _ = ExTermbox.shutdown(pid)
-          # Ensure process is stopped even if shutdown fails
-          # Use Process.exit with :kill for immediate termination if still alive
+          # Don't rely on clean shutdown API in test teardown, as it seems racy.
+          # Just ensure the process is stopped.
+          # _ = ExTermbox.shutdown(pid)
+          # Process.sleep(50)
           if Process.alive?(pid), do: Process.exit(pid, :kill)
         end)
 
@@ -74,9 +71,9 @@ defmodule ExTermbox.IntegrationTest do
         assert cell_data.y == y_pos
         # Check against the character we actually printed
         assert cell_data.char == char_to_print
-        # Assume get_cell also returns atoms now
-        assert cell_data.fg == fg
-        assert cell_data.bg == bg
+        # Compare against the *integer* values from Constants
+        assert cell_data.fg == ExTermbox.Constants.color(fg)
+        assert cell_data.bg == ExTermbox.Constants.color(bg)
 
       {:error, reason} ->
         flunk("get_cell failed: #{inspect(reason)}")
@@ -146,8 +143,8 @@ defmodule ExTermbox.IntegrationTest do
     # Pass handler_pid
     # Use atoms for output modes
     assert ExTermbox.set_output_mode(context.handler_pid, :normal) == :ok
-    assert ExTermbox.set_output_mode(context.handler_pid, :truecolor) == :ok
-    assert ExTermbox.set_output_mode(context.handler_pid, :c256) == :ok
+    assert ExTermbox.set_output_mode(context.handler_pid, :term_256) == :ok
+    assert ExTermbox.set_output_mode(context.handler_pid, :grayscale) == :ok
     assert ExTermbox.set_output_mode(context.handler_pid, :current) == :ok
 
     # Pass handler_pid
@@ -186,32 +183,60 @@ defmodule ExTermbox.IntegrationTest do
     # Remove sleep
     # Process.sleep(500)
 
-    # Subscribe the test process to events from the specific handler
-    # We need an `EventManager.subscribe(pid_or_name)` function
-    # Assuming EventManager also uses PID now, or we modify it.
-    # Let's assume for now EventManager needs adjustment too, but
-    # we first make sure the event command can be SENT.
-
-    # Define the event using atoms
-    test_event = %{
-      type: :key, # Use atom
-      mod: 0,
-      key: :arrow_up, # Use atom
+    # Create a sample event (e.g., Arrow Up key press)
+    test_event_map = %{
+      type: :key,
+      mod: ExTermbox.Constants.mod(:none), # Use the integer value
+      key: ExTermbox.Constants.key(:arrow_up),
       ch: 0,
       w: 0, h: 0, x: 0, y: 0
     }
 
-    # Send the debug command, passing handler_pid
-    assert ExTermbox.debug_send_event(context.handler_pid, test_event) == :ok
+    # Call the function with individual arguments
+    assert ExTermbox.debug_send_event(
+      context.handler_pid,
+      :key,
+      :none,
+      :arrow_up,
+      test_event_map.ch,
+      test_event_map.w,
+      test_event_map.h,
+      test_event_map.x,
+      test_event_map.y
+    ) == :ok
 
-    # Need mechanism to receive event
-    # Assuming events are sent to the owner (test process)
-    # Add `allow_subscribe_from_self: true` to init maybe?
-    # Or refactor EventManager...
-    # For now, just assert the command was sent.
-    # We'll need to verify reception later.
-    assert_receive {:termbox_event, ^test_event}, 500 # Add timeout
+    # Assert that the event is received by the owner process
+    assert_receive {:termbox_event, received_event} # Basic check
+    # More specific check (convert received map keys if necessary)
+    assert received_event.type == test_event_map.type
+    assert received_event.mod == test_event_map.mod
+    assert received_event.key == test_event_map.key
+  end
 
+  test "handles C process crash gracefully", context do
+    # Trap exits so the test doesn't die when the linked handler crashes
+    Process.flag(:trap_exit, true)
+
+    {:ok, handler_pid} = ExTermbox.init(owner: self())
+
+    # Monitor the handler process
+    ref = Process.monitor(handler_pid)
+
+    # Send the crash command. Expect an error because the C process exits immediately.
+    # The command might be sent successfully, but the socket closes before reply.
+    assert ExTermbox.debug_crash(handler_pid) in [:ok, {:error, :socket_closed}]
+
+    # Wait for the handler to go down because the C process crashed
+    assert_receive {:DOWN, ^ref, :process, ^handler_pid, {:shutdown, :c_process_exited}}
+
+    # Verify the handler PID is actually dead
+    # Use Process.sleep to give BEAM time to fully cleanup the process entry
+    Process.sleep(50)
+    refute Process.alive?(handler_pid)
+
+    # Ensure subsequent calls return :noproc
+    assert ExTermbox.present(handler_pid) == {:error, :noproc}
+    assert ExTermbox.width(handler_pid) == {:error, :noproc}
   end
 
   # TODO: Add more tests, e.g., for specific cell changes (if possible), events

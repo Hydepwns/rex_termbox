@@ -5,16 +5,17 @@
 
 An Elixir library for interacting with the terminal via the [termbox](https://github.com/nsf/termbox) C library.
 
-This library manages a separate C helper process (`termbox_port`) and communicates with it using an Elixir Port for initialization and Unix Domain Sockets (UDS) for subsequent commands and events. This provides a more robust alternative to NIF-based approaches.
+**Starting with version 1.1.0, this library no longer uses Elixir Native Implemented Functions (NIFs).** Instead, it manages a separate C helper process (`termbox_port`) and communicates with it using an Elixir Port for initialization and Unix Domain Sockets (UDS) for runtime commands and events. This approach provides enhanced stability and avoids potential NIF-related pitfalls.
 
-For high-level, declarative terminal UIs in Elixir, see [raxol](https://github.com/Hydepwns/raxol) or it's predecessor [Ratatouille](https://github.com/ndreynolds/ratatouille). It builds on top of
-this library and the termbox API to provide an HTML-like DSL for defining views.
+For high-level, declarative terminal UIs in Elixir, see [raxol](https://github.com/Hydepwns/raxol) or its predecessor [Ratatouille](https://github.com/ndreynolds/ratatouille), which build on top of this library.
 
 For the API Reference, see the `ExTermbox` module: [https://hexdocs.pm/rrex_termbox/ExTermbox.html](https://hexdocs.pm/rrex_termbox/ExTermbox.html).
 
 ## Getting Started
 
-### Architecture
+### Architecture (Port/UDS Based)
+
+**Note:** If you previously used versions prior to 1.1.0, be aware that the underlying communication mechanism has changed significantly from NIFs to a Port/UDS system. The `ExTermbox.Bindings` module and NIF-based event polling have been removed. See the [Changelog](./CHANGELOG.md) for details.
 
 ExTermbox starts and manages a C helper program (`termbox_port`). Communication happens as follows:
 
