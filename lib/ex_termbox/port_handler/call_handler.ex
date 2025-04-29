@@ -6,6 +6,7 @@ defmodule ExTermbox.PortHandler.CallHandler do
   alias ExTermbox.ProcessManager
   # Alias for function calls
   alias ExTermbox.PortHandler.InitHandler
+  alias ExTermbox.PortHandler.State # Add alias for State struct
   # Add alias for protocol
   alias ExTermbox.Protocol
 
@@ -104,7 +105,7 @@ defmodule ExTermbox.PortHandler.CallHandler do
             stop_reason = {:socket_send_failed, reason}
 
             # Use struct update syntax and correct stage atom
-            new_state = %{state |
+            new_state = %State{state |
               socket: nil,
               initialized?: false,
               stage: :init_failed, # Use atom

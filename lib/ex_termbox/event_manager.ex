@@ -103,7 +103,9 @@ defmodule ExTermbox.EventManager do
 
   @impl true
   def handle_info({:event, packed_event}, state) when is_tuple(packed_event) do
-    handle_info({:event, unpack_event(packed_event)}, state)
+    # Explicitly return the result of the recursive call
+    result = handle_info({:event, unpack_event(packed_event)}, state)
+    result
   end
 
   def handle_info({:event, %Event{} = event}, state) do

@@ -73,8 +73,8 @@ def connect_socket(path, timeout \\ @default_connect_timeout) do
   # Convert path charlist (e.g., ~c"/tmp/socket.sock") to binary for :gen_tcp
   binary_path = to_string(path)
   address = {:local, binary_path}
-  # Options: Use local domain, binary mode, passive (active: false)
-  opts = [:local, :binary, active: false]
+  # Options: Use local domain, binary mode, passive (active: true)
+  opts = [:local, :binary, active: true]
 
   Logger.debug("ProcessManager: Attempting to connect to UDS #{inspect(binary_path)} with timeout #{timeout}ms using :gen_tcp")
 
@@ -92,14 +92,14 @@ def connect_socket(path, timeout \\ @default_connect_timeout) do
   end
 end
 
-@doc "Uses :socket.send for sending data over the UDS."
+@doc "Uses :gen_tcp.send for sending data over the UDS connection established with :gen_tcp.connect."
 def send_socket(socket, data) do
   Logger.debug(
-    "ProcessManager: Sending to socket (via :socket.send): #{inspect(data)}"
+    "ProcessManager: Sending to socket (via :gen_tcp.send): #{inspect(data)}"
   )
 
-  # Use :socket.send which works with sockets from :socket.connect for TCP/UDS
-  :socket.send(socket, data)
+  # Use :gen_tcp.send which works with sockets from :gen_tcp.connect for TCP/UDS
+  :gen_tcp.send(socket, data)
 end
 
 @doc "Uses :gen_tcp.close for closing the UDS created via :gen_tcp."

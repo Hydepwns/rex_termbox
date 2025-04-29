@@ -195,13 +195,26 @@ defmodule ExTermbox.PortHandler do
   def handle_info(msg, state = %{stage: :init_completed}) do
     case msg do
       {:tcp, socket, data} when socket == state.socket ->
-        ExTermbox.PortHandler.SocketHandler.handle_socket_data(data, state.buffer, state.pending_call, state.owner)
+        # Get updates map and timeout from SocketHandler
+        {:noreply, state_updates, timeout} = ExTermbox.PortHandler.SocketHandler.handle_socket_data(data, state.buffer, state.pending_call, state.owner)
+        # Merge the updates into the full state struct
+        new_state = Map.merge(state, state_updates)
+        # Return the updated state and timeout
+        {:noreply, new_state, timeout}
 
       {:tcp_closed, socket} when socket == state.socket ->
-        ExTermbox.PortHandler.SocketHandler.handle_socket_closed(state.pending_call, state.owner)
+        # Get stop reason and state updates from SocketHandler
+        {:stop, reason, state_updates} = ExTermbox.PortHandler.SocketHandler.handle_socket_closed(state.pending_call, state.owner)
+        # Merge updates into the state struct before stopping
+        new_state = Map.merge(state, state_updates)
+        {:stop, reason, new_state}
 
       {:tcp_error, socket, reason} when socket == state.socket ->
-         ExTermbox.PortHandler.SocketHandler.handle_socket_error(reason, state.pending_call, state.owner)
+        # Get stop reason and state updates from SocketHandler
+        {:stop, stop_reason, state_updates} = ExTermbox.PortHandler.SocketHandler.handle_socket_error(reason, state.pending_call, state.owner)
+        # Merge updates into the state struct before stopping
+        new_state = Map.merge(state, state_updates)
+        {:stop, stop_reason, new_state}
 
       {port, {:exit_status, status}} when is_port(port) and port == state.port ->
          Logger.error("[PortHandler] Port exited unexpectedly (status: #{status}) while in stage :init_completed.")

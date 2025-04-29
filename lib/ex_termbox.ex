@@ -356,7 +356,7 @@ defmodule ExTermbox do
     try do
       fg_int = Constants.color(fg)
       bg_int = Constants.color(bg)
-      cmd_payload = Protocol.format_set_clear_attrs_command(fg_int, bg_int)
+      cmd_payload = Protocol.format_set_clear_attributes_command(fg_int, bg_int)
       call_genserver(pid_or_name, {:command, :set_clear_attributes, cmd_payload})
     catch
       :error, {:key_not_found, key, _} -> {:error, {:invalid_color, key}}

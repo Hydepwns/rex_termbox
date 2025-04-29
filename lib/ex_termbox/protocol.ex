@@ -6,12 +6,12 @@ defmodule ExTermbox.Protocol do
   require Logger
 
   # --- BEGIN ADD Regexes ---
-  @ok_regex ~r/^OK$/i
-  @error_regex ~r/^ERROR\\s+(.*)$/
-  @ok_cell_regex ~r/^OK_CELL\\s+(\\S+)\\s+(\\S+)\\s+(.+?)\\s+(\\S+)\\s+(\\S+)$/
-  @ok_width_regex ~r/^OK_WIDTH\\s+(\\S+)$/
-  @ok_height_regex ~r/^OK_HEIGHT\\s+(\\S+)$/
-  @event_regex ~r/^EVENT\\s+(.*)$/
+  @ok_regex ~r/^OK$/
+  @error_regex ~r/^ERROR\s+(.*)$/
+  @ok_cell_regex ~r/^OK_CELL\s+(\S+)\s+(\S+)\s+(.+?)\s+(\S+)\s+(\S+)$/
+  @ok_width_regex ~r/^OK_WIDTH\s+(\S+)$/
+  @ok_height_regex ~r/^OK_HEIGHT\s+(\S+)$/
+  @event_regex ~r/^EVENT\s+(.*)$/
   # --- END ADD Regexes ---
 
   # --- BEGIN ADD Command Formatting ---
@@ -27,11 +27,11 @@ defmodule ExTermbox.Protocol do
   def format_print_command(x, y, fg, bg, text) do
     # Ensure text doesn't contain newlines which would break the protocol
     safe_text = String.replace(text, "\n", " ")
-    "print #{x} #{y} #{fg} #{bg} #{safe_text}"
+    "print #{x} #{y} #{fg} #{bg} #{safe_text}\n"
   end
 
   def format_get_cell_command(x, y) do
-    "get_cell #{x} #{y}"
+    "get_cell #{x} #{y}\n"
   end
 
   @spec format_width_command :: String.t()
@@ -41,24 +41,24 @@ defmodule ExTermbox.Protocol do
   def format_height_command, do: "HEIGHT\n"
 
   def format_change_cell_command(x, y, codepoint, fg, bg) do
-    "change_cell #{x} #{y} #{codepoint} #{fg} #{bg}"
+    "change_cell #{x} #{y} #{codepoint} #{fg} #{bg}\n"
   end
 
   def format_set_cursor_command(x, y) do
-    "set_cursor #{x} #{y}"
+    "set_cursor #{x} #{y}\n"
   end
 
   def format_set_input_mode_command(mode) when is_integer(mode) do
-    "set_input_mode #{mode}"
+    "set_input_mode #{mode}\n"
   end
 
   def format_set_output_mode_command(mode) when is_integer(mode) do
-    "set_output_mode #{mode}"
+    "set_output_mode #{mode}\n"
   end
 
   def format_set_clear_attributes_command(fg, bg)
       when is_integer(fg) and is_integer(bg) do
-    "set_clear_attributes #{fg} #{bg}"
+    "set_clear_attributes #{fg} #{bg}\n"
   end
 
   # --- END ADD Command Formatting ---

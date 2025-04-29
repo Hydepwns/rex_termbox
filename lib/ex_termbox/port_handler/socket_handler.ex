@@ -14,9 +14,16 @@ defmodule ExTermbox.PortHandler.SocketHandler do
   # Returns {:noreply, state_updates_map, timeout | nil}
   def handle_socket_data(data, current_buffer, pending_call, owner_pid) do
     # Logger.debug("[SocketHandler] Received TCP data: #{inspect(data)}")
+    Logger.debug("[SocketHandler] handle_socket_data received. Buffer: '#{current_buffer}', Data: '#{data}', Pending: #{inspect(pending_call)}")
 
-    case Buffer.process(current_buffer, data) do
+    result = Buffer.process(current_buffer, data)
+    Logger.debug("[SocketHandler] Buffer.process result: #{inspect(result)}")
+
+    case result do
       {:lines, lines, remaining_buffer} ->
+        Logger.debug(
+          "[SocketHandler] Buffer processed. Lines: #{inspect(lines)}, Remaining: '#{remaining_buffer}'"
+        )
         # Logger.debug(
         #   "[SocketHandler] Buffer processed. Lines: #{inspect(lines)}, Remaining: '#{remaining_buffer}'"
         # )
@@ -32,10 +39,12 @@ defmodule ExTermbox.PortHandler.SocketHandler do
           pending_call: new_pending_call
         }
 
-        {:noreply, state_updates, nil}
+        # Return :infinity to cancel any pending command timeout
+        {:noreply, state_updates, :infinity}
 
       {:incomplete, new_buffer} ->
         # Logger.debug("[SocketHandler] Buffer incomplete. New buffer: '#{new_buffer}'")
+        # Keep existing timeout if buffer is incomplete
         {:noreply, %{buffer: new_buffer}, nil}
 
       other ->
@@ -138,7 +147,12 @@ defmodule ExTermbox.PortHandler.SocketHandler do
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp process_socket_line(line, current_pending_call, owner_pid) do
     # --- BEGIN REVERT Complexity Refactor ---
-    case Protocol.parse_socket_line(line) do
+    Logger.debug("[SocketHandler] processing line: '#{line}', Pending: #{inspect(current_pending_call)}")
+
+    parse_result = Protocol.parse_socket_line(line)
+    Logger.debug("[SocketHandler] Protocol.parse_socket_line result: #{inspect(parse_result)}")
+
+    case parse_result do
       {:ok_response} ->
         handle_ok_response(current_pending_call)
 
@@ -177,10 +191,10 @@ defmodule ExTermbox.PortHandler.SocketHandler do
 
   defp handle_ok_response(current_pending_call) do
     case current_pending_call do
-      {_command_key, from} ->
-        # Logger.debug(
-        #   "[SocketHandler] OK response for pending cmd: #{inspect(command_key)}"
-        # )
+      {command_key, from} ->
+        Logger.debug(
+          "[SocketHandler] Replying :ok to #{inspect(from)} for cmd: #{inspect(command_key)}"
+        )
         GenServer.reply(from, :ok)
         # Clear pending call
         nil
@@ -196,10 +210,10 @@ defmodule ExTermbox.PortHandler.SocketHandler do
 
   defp handle_ok_cell_response(cell_data, current_pending_call) do
     case current_pending_call do
-      {{:get_cell, _x, _y} = _command_key, from} ->
-        # Logger.debug(
-        #   "[SocketHandler] OK_CELL response for pending cmd: #{inspect(command_key)} -> #{inspect(cell_data)}"
-        # )
+      {{:get_cell, _x, _y} = command_key, from} ->
+        Logger.debug(
+          "[SocketHandler] Replying {:ok, cell_data} to #{inspect(from)} for cmd: #{inspect(command_key)}"
+        )
         GenServer.reply(from, {:ok, cell_data})
         # Clear pending call
         nil
@@ -224,9 +238,9 @@ defmodule ExTermbox.PortHandler.SocketHandler do
   defp handle_ok_value_response(expected_key, value, current_pending_call) do
     case current_pending_call do
       {^expected_key, from} ->
-        # Logger.debug(
-        #   "[SocketHandler] OK_VALUE response for pending cmd: #{inspect(expected_key)} -> #{inspect(value)}"
-        # )
+        Logger.debug(
+          "[SocketHandler] Replying {:ok, #{inspect(value)}} to #{inspect(from)} for cmd: :#{expected_key}"
+        )
         GenServer.reply(from, {:ok, value})
         # Clear pending call
         nil

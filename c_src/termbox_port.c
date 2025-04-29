@@ -13,6 +13,7 @@
 #include <sys/select.h> // For select()
 #include <fcntl.h>      // For fcntl, F_GETFL, O_NONBLOCK
 // Remove select/time/errno includes
+#include <strings.h>    // For strcasecmp
 #include "termbox.h" // Assuming termbox.h is accessible
 
 #define MAX_LINE_LENGTH 4096
@@ -75,6 +76,11 @@ ssize_t write_socket_line(int fd, const char *line) {
     memcpy(buffer, line, len);
     buffer[len] = '\n';
     buffer[len + 1] = '\0';
+
+    // --- ADD LOGGING ---
+    fprintf(stderr, "termbox_port C_LOG: Sending response: %s", buffer);
+    fflush(stderr);
+    // --- END LOGGING ---
 
     // Use write_exact to ensure the full line + newline is sent
     return write_exact(fd, buffer, len + 1);
@@ -235,22 +241,47 @@ int run_main_loop(int listen_fd) {
     fprintf(stderr, "termbox_port C_LOG: Client connected successfully.\n");
     fflush(stderr);
 
-    // --- Initialize Termbox MOVED TO CMD_INIT handler ---
-    // log_message("Initializing Termbox post-accept...");
-    // int tb_ret = tb_init();
-    // if (tb_ret != 0) {
-    //     char err_msg[100];
-    //     snprintf(err_msg, sizeof(err_msg), "tb_init() failed post-accept with code: %d", tb_ret);
-    //     fprintf(stderr, "termbox_port C_LOG ERROR: %s\n", err_msg);
-    //     fflush(stderr);
-    //     write_socket_line(client_socket_fd, "ERROR tb_init_failed");
-    //     close(client_socket_fd);
-    //     client_socket_fd = -1;
-    //     return 1; // Error
-    // }
-    // fprintf(stderr, "termbox_port C_LOG: Termbox initialized successfully (MOVED TO CMD_INIT).\n");
-    // fflush(stderr);
-    // update_shadow_buffer_size(tb_width(), tb_height()); // Also moved
+    // --- Redirect stdio to /dev/null before tb_init ---
+    // Attempt to prevent TB_EPIPE_TRAP_ERROR in test environments
+    #include <fcntl.h> // Include needed for O_RDWR
+    int dev_null_fd = open("/dev/null", O_RDWR);
+    if (dev_null_fd != -1) {
+        // Don't close if these are the socket fds (highly unlikely)
+        if (listen_fd != 0 && client_socket_fd != 0) dup2(dev_null_fd, 0); // stdin
+        if (listen_fd != 1 && client_socket_fd != 1) dup2(dev_null_fd, 1); // stdout - Needed?
+        // if (listen_fd != 2 && client_socket_fd != 2) dup2(dev_null_fd, 2); // stderr - Keep stderr for C logs
+        // Close the original fd for /dev/null only if it's not 0, 1, or 2 itself
+        if (dev_null_fd > 2) close(dev_null_fd);
+        log_message("Redirected stdin/stdout to /dev/null.");
+    } else {
+        perror("Warning: Failed to open /dev/null for redirection");
+    }
+    // --- End stdio redirection ---
+
+    // --- Initialize Termbox AFTER client connects ---
+#ifndef TESTING_WITHOUT_TERMBOX
+    log_message("Initializing Termbox post-accept...");
+    int tb_ret = tb_init();
+    if (tb_ret != 0) {
+        char err_msg[100];
+        snprintf(err_msg, sizeof(err_msg), "tb_init() failed post-accept with code: %d", tb_ret);
+        fprintf(stderr, "termbox_port C_LOG ERROR: %s\n", err_msg);
+        fflush(stderr);
+        write_socket_line(client_socket_fd, "ERROR tb_init_failed");
+        close(client_socket_fd);
+        client_socket_fd = -1;
+        return 1; // Error
+    }
+    fprintf(stderr, "termbox_port C_LOG: Termbox initialized successfully.\n");
+    fflush(stderr);
+    // Initialize shadow buffer with current size
+    update_shadow_buffer_size(tb_width(), tb_height());
+#else
+    log_message("TESTING_WITHOUT_TERMBOX: Skipping tb_init().");
+    // Initialize shadow buffer with dummy size for testing get_cell etc.
+    log_message("TESTING_WITHOUT_TERMBOX: Initializing shadow buffer with dummy size 80x24.");
+    update_shadow_buffer_size(80, 24);
+#endif
     // --- End Termbox Initialization ---
 
     // Set client socket to non-blocking
@@ -278,6 +309,7 @@ int run_main_loop(int listen_fd) {
 
     while (keep_running) { // Loop until shutdown command or error
         // 1. Check for termbox events with a short, non-blocking peek
+#ifndef TESTING_WITHOUT_TERMBOX
         struct tb_event event;
         int peek_ret = tb_peek_event(&event, 10); // 10 ms timeout
         if (peek_ret > 0) {
@@ -301,6 +333,10 @@ int run_main_loop(int listen_fd) {
         } else if (peek_ret < 0) {
             // log_message("tb_peek_event returned error/negative. Potential resize or other issue?");
         }
+#else
+        // When testing without termbox, maybe sleep briefly to avoid tight loop?
+        usleep(10000); // Sleep for 10ms
+#endif
 
         // 2. Check client socket for commands using select() with zero timeout
         FD_ZERO(&read_fds);
@@ -383,8 +419,12 @@ int run_main_loop(int listen_fd) {
     }
 
     // --- Clean up Termbox and client socket before exiting loop ---
+#ifndef TESTING_WITHOUT_TERMBOX
     log_message("Shutting down Termbox...");
     tb_shutdown();
+#else
+    log_message("TESTING_WITHOUT_TERMBOX: Skipping tb_shutdown().");
+#endif
     log_message("Closing client socket...");
     if (client_socket_fd != -1) {
         close(client_socket_fd);
@@ -433,11 +473,13 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
 
     const char *cmd = args[0];
 
-    // Compare command
-    if (strcmp(cmd, "present") == 0) {
+    // Compare command (case-insensitive)
+    if (strcasecmp(cmd, "present") == 0) {
         if (argc == 1) {
             // log_message("Executing tb_present()...");
+#ifndef TESTING_WITHOUT_TERMBOX
             tb_present();
+#endif
             // log_message("tb_present() done.");
             if (write_socket_line(client_fd, "OK") < 0) {
                 perror("Error writing OK response for present");
@@ -447,9 +489,11 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'present' command expects 0 arguments.");
             write_socket_line(client_fd, "ERROR invalid_args_present");
         }
-    } else if (strcmp(cmd, "clear") == 0) {
+    } else if (strcasecmp(cmd, "clear") == 0) {
         if (argc == 1) {
+#ifndef TESTING_WITHOUT_TERMBOX
             tb_clear();
+#endif
             // --- Shadow Buffer Update for clear ---
             if (shadow_buffer && shadow_buffer_width > 0 && shadow_buffer_height > 0) {
                 log_message("Clearing shadow buffer...");
@@ -472,7 +516,7 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'clear' command expects 0 arguments.");
             write_socket_line(client_fd, "ERROR invalid_args_clear");
         }
-    } else if (strcmp(cmd, "print") == 0) {
+    } else if (strcasecmp(cmd, "print") == 0) {
         // print x y fg bg text...
         if (argc >= 6) {
             int x = atoi(args[1]);
@@ -507,11 +551,19 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Executing print (via change_cell loop)...");
             while (*text_ptr != '\0') {
                 // Decode UTF-8 character
+#ifndef TESTING_WITHOUT_TERMBOX
                 text_ptr += tb_utf8_char_to_unicode(&codepoint, text_ptr);
+#else
+                // Dummy decode for testing
+                codepoint = (uint32_t)(*text_ptr);
+                text_ptr++;
+#endif
                 if (codepoint == 0) break; // End of string or error
 
                 // Call tb_change_cell for each character
+#ifndef TESTING_WITHOUT_TERMBOX
                 tb_change_cell(current_x, y, codepoint, fg, bg);
+#endif
 
                 // --- Shadow Buffer Update for print (via change_cell) ---
                 if (shadow_buffer && current_x >= 0 && current_x < shadow_buffer_width && y >= 0 && y < shadow_buffer_height) {
@@ -534,7 +586,7 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'print' command expects at least 5 arguments (x y fg bg text).");
             write_socket_line(client_fd, "ERROR invalid_args_print");
         }
-    } else if (strcmp(cmd, "change_cell") == 0) {
+    } else if (strcasecmp(cmd, "change_cell") == 0) {
         if (argc == 6) {
             int x = atoi(args[1]);
             int y = atoi(args[2]);
@@ -542,7 +594,9 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             uint16_t fg = (uint16_t)atoi(args[4]);
             uint16_t bg = (uint16_t)atoi(args[5]);
 
+#ifndef TESTING_WITHOUT_TERMBOX
             tb_change_cell(x, y, codepoint, fg, bg);
+#endif
 
             // --- Shadow Buffer Update for change_cell ---
             if (shadow_buffer && x >= 0 && x < shadow_buffer_width && y >= 0 && y < shadow_buffer_height) {
@@ -563,7 +617,7 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'change_cell' command expects 5 arguments (x y char fg bg).");
             write_socket_line(client_fd, "ERROR invalid_args_change_cell");
         }
-    } else if (strcmp(cmd, "get_cell") == 0) {
+    } else if (strcasecmp(cmd, "get_cell") == 0) {
         if (argc == 3) {
             int x = atoi(args[1]);
             int y = atoi(args[2]);
@@ -578,11 +632,21 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
 
                 // Convert the uint32_t codepoint back to a UTF-8 string
                 char utf8_buffer[8]; // Max 4 bytes for UTF-8 + null terminator should be enough
+#ifndef TESTING_WITHOUT_TERMBOX
                 int bytes_written = tb_utf8_unicode_to_char(utf8_buffer, cell_data.ch);
                 if (bytes_written <= 0) {
                     // Handle error or invalid codepoint - send a replacement character?
                     strcpy(utf8_buffer, "?");
                 }
+#else
+                // Dummy conversion for testing
+                if (cell_data.ch < 128) { // Basic ASCII
+                    utf8_buffer[0] = (char)cell_data.ch;
+                    utf8_buffer[1] = '\0';
+                } else { // Placeholder for non-ASCII
+                    strcpy(utf8_buffer, "?");
+                }
+#endif
                 // Ensure null termination just in case
                 utf8_buffer[sizeof(utf8_buffer) - 1] = '\0';
 
@@ -604,9 +668,14 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'get_cell' command expects 2 arguments (x y).");
             write_socket_line(client_fd, "ERROR invalid_args_get_cell");
         }
-    } else if (strcmp(cmd, "width") == 0) {
+    } else if (strcasecmp(cmd, "width") == 0) {
         if (argc == 1) {
-            int width = tb_width();
+            int width = 0;
+#ifndef TESTING_WITHOUT_TERMBOX
+            width = tb_width();
+#else
+            width = shadow_buffer_width; // Use shadow buffer width in test mode
+#endif
             char response_buffer[32];
             snprintf(response_buffer, sizeof(response_buffer), "OK_WIDTH %d", width);
             if (write_socket_line(client_fd, response_buffer) < 0) {
@@ -617,9 +686,14 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'width' command expects 0 arguments.");
             write_socket_line(client_fd, "ERROR invalid_args_width");
         }
-    } else if (strcmp(cmd, "height") == 0) {
+    } else if (strcasecmp(cmd, "height") == 0) {
         if (argc == 1) {
-            int height = tb_height();
+            int height = 0;
+#ifndef TESTING_WITHOUT_TERMBOX
+            height = tb_height();
+#else
+            height = shadow_buffer_height; // Use shadow buffer height in test mode
+#endif
             char response_buffer[32];
             snprintf(response_buffer, sizeof(response_buffer), "OK_HEIGHT %d", height);
             if (write_socket_line(client_fd, response_buffer) < 0) {
@@ -630,11 +704,13 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'height' command expects 0 arguments.");
             write_socket_line(client_fd, "ERROR invalid_args_height");
         }
-    } else if (strcmp(cmd, "set_cursor") == 0) {
+    } else if (strcasecmp(cmd, "set_cursor") == 0) {
         if (argc == 3) {
             int x = atoi(args[1]);
             int y = atoi(args[2]);
+#ifndef TESTING_WITHOUT_TERMBOX
             tb_set_cursor(x, y);
+#endif
             if (write_socket_line(client_fd, "OK") < 0) {
                 perror("Error writing OK response for set_cursor");
                 return 1;
@@ -643,10 +719,13 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'set_cursor' command expects 2 arguments (x y).");
             write_socket_line(client_fd, "ERROR invalid_args_set_cursor");
         }
-    } else if (strcmp(cmd, "set_input_mode") == 0) {
+    } else if (strcasecmp(cmd, "set_input_mode") == 0) {
         if (argc == 2) {
             int mode = atoi(args[1]);
-            int result = tb_select_input_mode(mode);
+            int result = 0;
+#ifndef TESTING_WITHOUT_TERMBOX
+            result = tb_select_input_mode(mode);
+#endif
             if (result < 0) {
                  snprintf(log_buf, sizeof(log_buf), "Error: tb_select_input_mode(%d) failed with code %d.", mode, result);
                  log_message(log_buf);
@@ -662,10 +741,13 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'set_input_mode' command expects 1 argument (mode).");
             write_socket_line(client_fd, "ERROR invalid_args_set_input_mode");
         }
-    } else if (strcmp(cmd, "set_output_mode") == 0) {
+    } else if (strcasecmp(cmd, "set_output_mode") == 0) {
         if (argc == 2) {
             int mode = atoi(args[1]);
-            int result = tb_select_output_mode(mode);
+            int result = 0;
+#ifndef TESTING_WITHOUT_TERMBOX
+            result = tb_select_output_mode(mode);
+#endif
             if (result < 0) {
                  snprintf(log_buf, sizeof(log_buf), "Error: tb_select_output_mode(%d) failed with code %d.", mode, result);
                  log_message(log_buf);
@@ -681,11 +763,13 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'set_output_mode' command expects 1 argument (mode).");
             write_socket_line(client_fd, "ERROR invalid_args_set_output_mode");
         }
-    } else if (strcmp(cmd, "set_clear_attributes") == 0) {
+    } else if (strcasecmp(cmd, "set_clear_attributes") == 0) {
         if (argc == 3) {
             uint16_t fg = (uint16_t)atoi(args[1]);
             uint16_t bg = (uint16_t)atoi(args[2]);
+#ifndef TESTING_WITHOUT_TERMBOX
             tb_set_clear_attributes(fg, bg);
+#endif
             // Note: No direct termbox return value to check for failure here.
             if (write_socket_line(client_fd, "OK") < 0) {
                 perror("Error writing OK response for set_clear_attributes");
@@ -695,7 +779,7 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("Error: 'set_clear_attributes' command expects 2 arguments (fg bg).");
             write_socket_line(client_fd, "ERROR invalid_args_set_clear_attributes");
         }
-    } else if (strcmp(cmd, "DEBUG_SEND_EVENT") == 0) {
+    } else if (strcasecmp(cmd, "DEBUG_SEND_EVENT") == 0) {
         // DEBUG_SEND_EVENT type mod key ch w h x y
         if (argc == 9) {
             struct tb_event debug_event;
@@ -712,15 +796,17 @@ int handle_client_command(int client_fd, char* command_line, ssize_t len) {
             log_message("DEBUG: Sending synthetic event via DEBUG_SEND_EVENT command.");
             send_event_to_client(client_fd, &debug_event);
 
-            // No explicit response needed for debug command, event is the "response"
-            // Optional: Could send an OK back if desired for testing flow. Let's omit for now.
-            // write_socket_line(client_fd, "OK"); 
+            // Send OK response for GenServer.call
+            if (write_socket_line(client_fd, "OK") < 0) {
+                perror("Error writing OK response for debug_send_event");
+                return 1; // Indicate write error
+            }
 
         } else {
             log_message("Error: 'DEBUG_SEND_EVENT' command expects 8 arguments (type mod key ch w h x y).");
             write_socket_line(client_fd, "ERROR invalid_args_debug_send_event");
         }
-    } else if (strcmp(cmd, "shutdown") == 0) {
+    } else if (strcasecmp(cmd, "shutdown") == 0) {
         log_message("Shutdown command received. Acknowledging and preparing to exit loop.");
         write_socket_line(client_fd, "OK"); // Acknowledge shutdown request
         return 1; // Signal to exit the main loop
