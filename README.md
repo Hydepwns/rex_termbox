@@ -1,5 +1,8 @@
 # Raxol Revived ExTermbox
 
+[![Hex.pm](https://img.shields.io/hexpm/v/rrex_termbox.svg)](https://hex.pm/packages/rrex_termbox)
+[![Hexdocs.pm](https://img.shields.io/badge/api-hexdocs-brightgreen.svg)](https://hexdocs.pm/rrex_termbox)
+
 An Elixir library for interacting with the terminal via the [termbox](https://github.com/nsf/termbox) C library.
 
 This library manages a separate C helper process (`termbox_port`) and communicates with it using an Elixir Port for initialization and Unix Domain Sockets (UDS) for subsequent commands and events. This provides a more robust alternative to NIF-based approaches.
@@ -117,18 +120,17 @@ If you encounter build issues related to Python or `waf`, please ensure you are 
 
 ## Installation
 
-Add `:rrex_termbox` as a dependency in your project's `mix.exs`, pointing to this GitHub repository:
+Add `:rrex_termbox` as a dependency in your project's `mix.exs`:
 
 ```elixir
 def deps do
   [
-    # Note: This package is not yet published on Hex.pm
-    {:rrex_termbox, github: "Hydepwns/rrex_termbox"}
+    {:rrex_termbox, "~> 1.1.0"}
   ]
 end
 ```
 
-You will need standard C build tools (like `gcc` or `clang`, often part of `build-essential` or Xcode Command Line Tools) installed on your system.
+The Hex package bundles a compatible version of termbox. You will need standard C build tools (like `gcc` or `clang`, often part of `build-essential` or Xcode Command Line Tools) installed on your system.
 
 Mix compile hooks automatically build the `termbox_port` C helper executable needed by the library. This should happen the first time you build :rrex_termbox (e.g., via `mix deps.get` followed by `mix deps.compile` or simply `mix compile`).
 
