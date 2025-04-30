@@ -4,7 +4,7 @@ defmodule ExTermbox.Mixfile do
   def project do
     [
       app: :rrex_termbox,
-      version: "2.0.0-alpha.1",
+      version: "2.0.0",
       elixir: "~> 1.10",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -49,7 +49,6 @@ defmodule ExTermbox.Mixfile do
         mix.exs
         README.md
         LICENSE
-        REFACTORING_PLAN.md
       ),
       maintainers: ["DROO AMOR"],
       licenses: ["MIT"],
