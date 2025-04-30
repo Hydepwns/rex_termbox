@@ -3,9 +3,9 @@
 [![Hex.pm](https://img.shields.io/hexpm/v/rrex_termbox.svg)](https://hex.pm/packages/rrex_termbox)
 [![Hexdocs.pm](https://img.shields.io/badge/api-hexdocs-brightgreen.svg)](https://hexdocs.pm/rrex_termbox)
 
-An Elixir library for interacting with the terminal via the [termbox](https://github.com/nsf/termbox) C library.
+An Elixir library for interacting with the terminal via the [termbox2](https://github.com/termbox/termbox2) C library, a maintained fork of the original termbox.
 
-**Starting with version 1.1.0, this library no longer uses Elixir Native Implemented Functions (NIFs).** Instead, it manages a separate C helper process (`termbox_port`) and communicates with it using an Elixir Port for initialization and Unix Domain Sockets (UDS) for runtime commands and events. This approach provides enhanced stability and avoids potential NIF-related pitfalls.
+**Starting with version 2.0.0, this library uses Elixir Native Implemented Functions (NIFs) provided by the [`termbox2`](https://hex.pm/packages/termbox2) Hex package (and its associated NIF bindings).** This replaces the previous Port/Unix Domain Socket architecture, leveraging a maintained C library and simplifying the build process.
 
 For high-level, declarative terminal UIs in Elixir, see [raxol](https://github.com/Hydepwns/raxol) or its predecessor [Ratatouille](https://github.com/ndreynolds/ratatouille), which build on top of this library.
 
@@ -13,95 +13,121 @@ For the API Reference, see the `ExTermbox` module: [https://hexdocs.pm/rrex_term
 
 ## Getting Started
 
-### Architecture (Port/UDS Based)
+### Architecture (NIF Based)
 
-**Note:** If you previously used versions prior to 1.1.0, be aware that the underlying communication mechanism has changed significantly from NIFs to a Port/UDS system. The `ExTermbox.Bindings` module and NIF-based event polling have been removed. See the [Changelog](./CHANGELOG.md) for details.
+**Note:** If you previously used versions prior to 2.0.0, be aware that the underlying communication mechanism has changed significantly from a Port/UDS system back to NIFs, leveraging the `termbox2` dependency. See the [Changelog](./CHANGELOG.md) for details.
 
-ExTermbox starts and manages a C helper program (`termbox_port`). Communication happens as follows:
+`ExTermbox` now interacts directly with the `termbox2` C library through NIFs provided by the `termbox2` Hex dependency.
 
-1. **Initialization:** An Elixir Port is used briefly to exchange the path for a Unix Domain Socket (UDS).
-2. **Runtime:** All subsequent commands (like printing, setting cursor, changing cells) and events (like key presses, resizes) are sent over the UDS connection using a simple text-based protocol.
+1. **Initialization:** `ExTermbox.init/1` starts a `GenServer` (`ExTermbox.Server`) which calls the `tb_init()` NIF function. This server manages the termbox state and handles API calls.
+2. **API Calls:** Public functions in the `ExTermbox` module (e.g., `ExTermbox.print/5`, `ExTermbox.clear/0`, `ExTermbox.present/0`) communicate with the `ExTermbox.Server` via `GenServer` calls/casts. The server then invokes the corresponding `termbox2` NIF function (e.g., `tb_print`, `tb_clear`, `tb_present`).
+3. **Event Handling:** The `ExTermbox.Server` periodically polls for terminal events (like key presses, mouse events, or resizes) using the `tb_peek_event()` NIF. When an event occurs, it's translated into an `ExTermbox.Event` struct and sent as a standard Elixir message (`{:termbox_event, event}`) to the process that originally called `ExTermbox.init/1` (the "owner" process).
 
 The public API is exposed primarily through the `ExTermbox` module.
 
 ### Hello World
 
 Let's go through a simple example.
-To follow along, clone this repo and save the code below as an `.exs` file (e.g., `hello.exs`).
 
-This repository makes use of [Git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules), so make sure you include them in your clone. In recent versions of git, this can be accomplished by including the `--recursive` flag, e.g.
-
-```bash
-# Make sure to clone *this* repository recursively to include submodules
-git clone --recursive https://github.com/Hydepwns/rrex_termbox.git
-```
-
-When the clone is complete, the `c_src/termbox/` directory should have files in it.
-
-You can also create an
-Elixir script in any Mix project with `rrex_termbox` in the dependencies list.
-Later, we'll run the example with `mix run <file>`.
+Create an Elixir script (e.g., `hello.exs`) in any Mix project that includes `rrex_termbox` in its dependencies (see Installation below).
 
 ```elixir
 # hello.exs
 defmodule HelloWorld do
+  use GenServer
   alias ExTermbox
 
-  def run do
-    # Start ExTermbox, registering the current process to receive events
+  def start_link(_opts) do
+    # Start our process that will own the termbox session
+    GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
+  end
+
+  @impl true
+  def init(:ok) do
+    # Initialize ExTermbox, registering this GenServer process as the owner
+    # The owner process will receive {:termbox_event, event} messages
     case ExTermbox.init(self()) do
       :ok ->
         IO.puts("ExTermbox initialized successfully.")
-        # Clear the screen
-        :ok = ExTermbox.clear()
-
-        # Print "Hello, World!" at (0, 0) with default colors
-        :ok = ExTermbox.print(0, 0, :default, :default, "Hello, World!")
-
-        # Print "(Press <q> to quit)" at (0, 2)
-        :ok = ExTermbox.print(0, 2, :default, :default, "(Press <q> to quit)")
-
-        # Render the changes to the terminal
-        :ok = ExTermbox.present()
-
-        # Wait for the 'q' key event
-        wait_for_quit()
-
-        # Shut down ExTermbox
-        :ok = ExTermbox.shutdown()
-        IO.puts("ExTermbox shut down.")
+        # Send ourselves a message to trigger drawing the initial screen
+        send(self(), :draw)
+        {:ok, %{}} # Initial state for our GenServer
 
       {:error, reason} ->
         IO.inspect(reason, label: "Error initializing ExTermbox")
+        {:stop, :init_failed}
     end
   end
 
-  defp wait_for_quit do
+  @impl true
+  def handle_info(:draw, state) do
+    # Clear the screen
+    :ok = ExTermbox.clear()
+
+    # Print "Hello, World!" at (0, 0) with default colors
+    :ok = ExTermbox.print(0, 0, :default, :default, "Hello, World!")
+
+    # Print "(Press <q> to quit)" at (0, 2)
+    :ok = ExTermbox.print(0, 2, :default, :default, "(Press <q> to quit)")
+
+    # Render the changes to the terminal
+    :ok = ExTermbox.present()
+    {:noreply, state}
+  end
+
+  # Handle events sent from ExTermbox.Server
+  @impl true
+  def handle_info({:termbox_event, %ExTermbox.Event{type: :key, key: :q}}, state) do
+    IO.puts("Quit event received.")
+    # Trigger shutdown before stopping
+    ExTermbox.shutdown()
+    {:stop, :normal, state}
+  end
+
+  @impl true
+  def handle_info({:termbox_event, event}, state) do
+    # Optional: Log other events
+    # IO.inspect(event, label: "Received event")
+    {:noreply, state}
+  end
+
+  # Handle other messages if needed
+  @impl true
+  def handle_info(msg, state) do
+    # IO.inspect(msg, label: "Received other message")
+    {:noreply, state}
+  end
+
+  @impl true
+  def terminate(reason, _state) do
+    IO.puts("HelloWorld GenServer terminating: #{inspect(reason)}")
+    # Ensure termbox is shut down if termination wasn't triggered by :q
+    # (This might be redundant if ExTermbox.Server links/monitors)
+    ExTermbox.shutdown()
+    :ok
+  end
+
+  # Helper to run the example
+  def run do
+    # Ensure the app is started if running as a script
+    {:ok, _} = Application.ensure_all_started(:rrex_termbox)
+
+    {:ok, pid} = start_link([])
+    # Keep the script alive until the GenServer terminates
+    Process.monitor(pid)
     receive do
-      # Events are sent as messages to the registered process
-      {:termbox_event, %{type: :key, key: :q}} ->
-        :quit
-      {:termbox_event, event} ->
-        # IO.inspect(event, label: "Received event") # Uncomment to see other events
-        wait_for_quit() # Wait for the next event
-      _other_message ->
-        # IO.inspect(other_message, label: "Received other message")
-        wait_for_quit() # Wait for the next event
-    after
-      10_000 -> IO.puts("Timeout waiting for 'q' key.") # Add a timeout for safety
+      {:DOWN, _, :process, ^pid, reason} ->
+        IO.puts("HelloWorld process finished: #{inspect(reason)}")
     end
   end
 end
 
 HelloWorld.run()
-
 ```
 
-In a real application, you'll likely want to integrate `ExTermbox` into an OTP application with a proper supervisor.
+In this example, we use a `GenServer` to manage the application's lifecycle and handle the asynchronous `{:termbox_event, ...}` messages.
 
-The `ExTermbox.print/5` function provides a simple way to display strings. For more control over individual cells (characters, foreground/background colors, attributes), use `ExTermbox.change_cell/5`. The `ExTermbox.width/0` and `ExTermbox.height/0` functions can be used to get the terminal dimensions.
-
-Finally, run the example like this:
+Finally, run the example like this (assuming you have `rrex_termbox` added to a Mix project):
 
 ```bash
 mix run hello.exs
@@ -109,69 +135,36 @@ mix run hello.exs
 
 You should see the text we rendered and be able to quit with 'q'.
 
-## Python Build Compatibility (Python 3.12+)
-
-The version of the `termbox` C library bundled with `:rrex_termbox` uses an older version of the `waf` build system. This version of `waf` contained code (`import imp`) that is incompatible with Python 3.12 and newer, causing the C helper compilation to fail if a modern Python version is your system default.
-
-This fork includes a small patch directly within the bundled `waf` scripts (`c_src/termbox/.waf3-2.0.14-e67604cd8962dbdaf7c93e0d7470ef5b/waflib/Context.py`) to replace the incompatible code with its modern equivalent (`importlib`).
-
-With this patch, `:rrex_termbox` should compile successfully using Python 3.12+ without requiring manual intervention or downgrading Python.
-
-If you encounter build issues related to Python or `waf`, please ensure you are using a version of this library that includes this fix.
-
 ## Installation
 
-Add `:rrex_termbox` as a dependency in your project's `mix.exs`:
+Add `rrex_termbox` as a dependency in your project's `mix.exs`.
+
+**Important:** This library currently relies on a fork of the `termbox2` NIF wrapper to include necessary fixes and features. Point your dependency directly to the GitHub repository:
 
 ```elixir
 def deps do
   [
-    {:rrex_termbox, "~> 1.1.0"}
+    # {:rrex_termbox, "~> 2.0.0"}, # Use this once published to Hex
+    {:rrex_termbox, git: "https://github.com/Hydepwns/rrex_termbox.git", tag: "v2.0.0-alpha.2"} # Or branch: "main"
+
+    # The underlying NIF library (currently points to a fork)
+    # rrex_termbox depends on this, so it's usually fetched automatically,
+    # but explicitly listing it might be needed for overrides.
+    # {:termbox2, github: "Hydepwns/termbox2-nif", tag: "0.1.1-hydepwns-fix1", submodules: true}
   ]
 end
 ```
 
-The Hex package bundles a compatible version of termbox. You will need standard C build tools (like `gcc` or `clang`, often part of `build-essential` or Xcode Command Line Tools) installed on your system.
+*(Note: Once `rrex_termbox` v2.0.0 (or later) is published on Hex.pm and the underlying `termbox2` dependency issues are resolved upstream or the fork is published, the dependency specification can likely be simplified back to `{:rrex_termbox, "~> 2.0.0"}`.)*
 
-Mix compile hooks automatically build the `termbox_port` C helper executable needed by the library. This should happen the first time you build :rrex_termbox (e.g., via `mix deps.get` followed by `mix deps.compile` or simply `mix compile`).
+You will need standard C build tools (like `gcc` or `clang`, often part of `build-essential` or Xcode Command Line Tools) installed on your system for the `termbox2` NIF dependency to compile.
 
-The build has been tested on macOS and some Linux distributions. Please open an issue if you encounter build problems.
+Mix should handle fetching the dependency and compiling the NIFs automatically when you run `mix deps.get` and `mix compile`.
 
-### Using the Source Directly
-
-To try out the master branch, first clone the repo:
-
-```bash
-# Make sure to clone *this* repository recursively to include submodules
-git clone --recurse-submodules <your-fork-url>
-cd rrex_termbox # Assuming the directory name matches the repo
-```
-
-The `--recurse-submodules` flag (`--recursive` before Git 2.13) is necessary in
-order to additionally clone the termbox source code, which is required to
-build the C helper program.
-
-Next, fetch the deps:
-
-```
-mix deps.get
-```
-
-Finally, try out the included event viewer application:
-
-```
-mix run examples/event_viewer.exs
-```
-
-If you see the application drawn and can trigger events, you're good to go. Use
-'q' to quit the examples.
+If you encounter build issues, ensure your build tools are installed and check the `termbox2` dependency's documentation or repository for any specific requirements.
 
 ## Distribution
 
-Building a standalone executable for applications using `:rrex_termbox` requires some special consideration due to the included C helper program (`termbox_port`) which needs to be packaged alongside your Elixir application.
+Building standalone releases for applications using `rrex_termbox` (and its underlying NIF dependency) should work with standard Elixir **[Releases](https://hexdocs.pm/mix/Mix.Tasks.Release.html)**. The build process compiles the NIFs into a shared object file (`.so` or `.dylib`) located in the `priv/` directory of the dependency (`termbox2`). Releases are designed to package these `priv/` artifacts correctly.
 
-Standard Elixir tools like `escript` are **not** suitable because they do not correctly package the necessary helper executable located in the `priv/` directory after compilation.
-
-The recommended approach for creating distributable releases is to use **[Distillery](https://github.com/bitwalker/distillery)** or the built-in Elixir **[Releases](https://hexdocs.pm/mix/Mix.Tasks.Release.html)**. These tools are designed to handle external programs and assets correctly. They will package your application, the Erlang Runtime System (ERTS), and the compiled `termbox_port` helper into a self-contained bundle.
-
-Consult the documentation for Distillery or Elixir Releases for specific instructions on configuring your project for release builds, ensuring the `priv/termbox_port` executable is included in the release package.
+Ensure your release configuration properly includes the `rrex_termbox` and `termbox2` applications. Consult the Elixir Releases documentation for details.

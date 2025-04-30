@@ -4,11 +4,61 @@ Inshalla, this is the last time I'll have to do this.
 
 ## [Unreleased]
 
+*No changes yet.*
+
+## [2.0.0] - YYYY-MM-DD (Replace with release date)
+
+### Breaking Changes
+
+- **Complete Architectural Overhaul:** Replaced the previous Port/UDS architecture (using a C helper process, `:expty`, and Unix Domain Sockets) with a direct NIF-based integration using the `termbox2` library (via the `Hydepwns/termbox2-nif` fork).
+- **API Interaction:** Public API functions in `ExTermbox` now interact with a `GenServer` (`ExTermbox.Server`) instead of directly managing a port/process. Functions like `init/1`, `shutdown/0`, `width/0`, `height/0`, etc., now primarily send messages to this server.
+- **Event Handling:** Event polling is now handled internally by `ExTermbox.Server` using the `tb_peek_event` NIF. Events are delivered asynchronously as `{:termbox_event, %ExTermbox.Event{}}` messages to the process that called `init/1` (the owner process). Manual event polling functions (`poll_event`, `peek_event`) have been removed.
+- **Dependencies:**
+  - Removed the `:expty` dependency.
+  - Removed the `:elixir_make` dependency and associated build configurations (`Makefile`, C helper build logic).
+  - Added a dependency on `termbox2` (currently requiring the `Hydepwns/termbox2-nif` fork with `submodules: true`).
+- **Removed Modules:** All modules related to the old Port/UDS architecture have been removed, including:
+  - `ExTermbox.PortHandler` and its sub-modules (`InitHandler`, `SocketHandler`, etc.)
+  - `ExTermbox.ProcessManager`
+  - `ExTermbox.Buffer`
+  - `ExTermbox.Protocol`
+  - `ExTermbox.Initializer`
+  - `ExTermbox.EventManager`
+  - The C helper program (`c_src/termbox_port.c`) and the `termbox` C library submodule.
+
+### Added
+
+- **`ExTermbox.Server`:** A new `GenServer` responsible for managing the `termbox2` lifecycle (`tb_init`, `tb_shutdown`), handling API calls via NIFs, and polling/dispatching events.
+- **`ExTermbox.Event`:** A struct representing parsed terminal events.
+- **`ExTermbox.Constants`:** Module defining constants for keys, colors, attributes, modes, etc., based on `termbox2`.
+- **NIF Integration:** The library now directly calls NIF functions provided by the `termbox2` dependency (fork).
+- **`get_cell/2`:** Added function to retrieve cell content (requires corresponding NIF in the fork).
+- **Unit Tests:** Added unit tests for `ExTermbox.Server`, particularly for event handling logic, using mocked NIF calls.
+
+### Changed
+
+- **`mix.exs`:** Updated dependencies and removed old build configurations.
+- **API Functions:** Refactored implementations of all `ExTermbox` public functions to communicate with `ExTermbox.Server`.
+- **Event Processing:** Implemented logic in `ExTermbox.Server` to map raw NIF event data to `ExTermbox.Event` structs.
+- **Integration Tests:** Updated existing tests to work with the `GenServer` API and removed obsolete Port/UDS tests.
+- **Documentation:** Updated `README.md` and function documentation (`@doc`) to reflect the new NIF architecture, `GenServer` usage, and event handling mechanism.
+
+### Removed
+
+- Obsolete `ExTermbox.debug_crash/1` and `ExTermbox.debug_send_event/9` functions.
+- Old `ExTermbox.NIF` wrapper module (calls are made directly to `:termbox2`).
+
+### Fixed
+
+- **NIF Loading:** Resolved NIF path loading issues by using a patched fork (`Hydepwns/termbox2-nif`) and ensuring submodules are included.
+- **Missing NIF Bindings:** Added necessary NIF bindings (`tb_set_input_mode`, `tb_set_output_mode`, etc.) to the `termbox2-nif` fork.
+- **Compiler Warnings:** Addressed various compiler warnings related to unused variables, aliases, and unreachable code.
+
 ### Known Issues / TODO
 
-- Resolve compiler warnings about unused private `_parse_*` helper functions in `ExTermbox.Protocol`.
-- Investigate and fix warnings about potentially unreachable clauses (`{:parse_error, ...}`, `{:unknown_line, ...}`) in `ExTermbox.PortHandler.SocketHandler.process_socket_line/3`, possibly due to incomplete return types from `ExTermbox.Protocol.parse_socket_line/1`.
-- Enhance example tests (`test/integration/examples_test.exs`) to verify visual output or behavior beyond just startup.
+- **`get_cell/2` NIF Dependency:** The `ExTermbox.get_cell/2` function requires the `tb_get_cell(x, y)` NIF to be implemented in the `Hydepwns/termbox2-nif` fork to function correctly.
+- **Example Tests:** Integration tests for examples (`test/integration/examples_test.exs`) could be enhanced (Low priority).
+- **Upstream Dependency:** Relies on a fork of `termbox2-nif`. Ideally, these changes would be merged upstream or the fork published reliably.
 
 ## [1.1.5] - 2025-05-01
 
@@ -74,3 +124,20 @@ Inshalla, this is the last time I'll have to do this.
 - Internal modules for handling protocol, buffering, and process management (`ExTermbox.Protocol`, `ExTermbox.Buffer`, `ExTermbox.ProcessManager`, etc.).
 - Implemented support for the following termbox functionalities via the new architecture:
   - `init`, `shutdown`
+
+## [1.0.0] - 2025-04-28
+
+### Added
+
+- Created `lib/ex_termbox/nif.ex` to handle NIF loading (using `@on_load`).
+- Created `lib/ex_termbox/server.ex` implementing a `GenServer` to manage the termbox lifecycle (`tb_init`/`tb_shutdown`), handle API calls via NIF interaction, and perform event polling.
+- Created `lib/ex_termbox/event.ex` defining the `ExTermbox.Event` struct for parsed events.
+
+### Changed (API Refactoring)
+
+- Refactored the `ExTermbox` module:
+  - `ExTermbox.init/1` now starts the `ExTermbox.Server` GenServer.
+  - `ExTermbox.shutdown/0` now stops the `ExTermbox.Server`.
+  - Most public API functions (`present/0`, `clear/0`, `width/0`, `height/0`, `change_cell/5`, `set_cursor/2`, `print/5`, `select_input_mode/1`, `set_output_mode/1`, `set_clear_attributes/2`) now communicate with the `ExTermbox.Server` via `GenServer.call/cast` instead of requiring a process PID.
+  - Event polling functions (`poll_event`, `peek_event`) removed; events are now automatically polled by the server and sent to the owner process as `{:termbox_event, %ExTermbox.Event{}}` messages (NIF event format and mapping require verification).
+- `ExTermbox.Server` implements basic event polling using `NIF.tb_peek_event/1` and sends parsed events to the owner process (NIF event format and mapping require verification).
