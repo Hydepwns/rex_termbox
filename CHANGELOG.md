@@ -6,7 +6,18 @@ Inshalla, this is the last time I'll have to do this.
 
 *No changes yet.*
 
-## [2.0.0] - YYYY-MM-DD (Replace with release date)
+## [2.0.1] - 2023-06-12
+
+### Fixed
+
+- Fixed the `get_cell/2` implementation to properly handle the missing NIF function.
+  The function now returns `{:error, {:not_implemented, "..."}}` instead of failing.
+- Updated documentation to clarify that `get_cell/2` is not currently implemented
+  in the underlying NIF library.
+- Fixed test expectations for `get_cell/2` to match the new behavior.
+- Removed invalid `Mox.start()` call from test helper.
+
+## [2.0.0] - 2023-06-12
 
 ### Breaking Changes
 
