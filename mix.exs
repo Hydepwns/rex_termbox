@@ -4,7 +4,7 @@ defmodule ExTermbox.Mixfile do
   def project do
     [
       app: :rrex_termbox,
-      version: "1.1.4",
+      version: "1.1.5",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
       compilers: [:elixir_make | Mix.compilers()],
@@ -53,7 +53,6 @@ defmodule ExTermbox.Mixfile do
         c_src/termbox/src/*.{inl,c,h}
         c_src/termbox/**/wscript
         c_src/termbox/waf
-        c_src/termbox/.waf3-2.0.14-e67604cd8962dbdaf7c93e0d7470ef5b/waflib/Utils.py
         lib
         Makefile
         mix.exs
