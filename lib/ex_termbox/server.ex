@@ -201,31 +201,10 @@ defmodule ExTermbox.Server do
 
   @impl true
   def handle_call({:get_cell, x, y}, _from, state) when is_integer(x) and is_integer(y) do
-    # Assume :termbox2.tb_get_cell(x, y) returns {char_codepoint, fg_attr, bg_attr} on success
-    # or an error code on failure (or raises NIF error).
-    # This requires `tb_get_cell` to be implemented in the termbox2-nif fork.
-    try do
-      # NOTE: The exact return format from the NIF needs verification once implemented.
-      case :termbox2.tb_get_cell(x, y) do
-        {codepoint, fg, bg} when is_integer(codepoint) and is_integer(fg) and is_integer(bg) ->
-          {:reply, {:ok, {codepoint, fg, bg}}, state}
-
-        error_code when is_integer(error_code) and error_code < 0 ->
-          error_atom = map_integer_to_atom(error_code, Constants.error_codes())
-          {:reply, {:error, {error_atom, error_code}}, state}
-
-        other ->
-          # Unexpected return format from NIF
-          Logger.error("Unexpected return from :termbox2.tb_get_cell(#{x}, #{y}): #{inspect(other)}")
-          {:reply, {:error, {:unexpected_nif_return, other}}, state}
-      end
-    catch
-      # Catch if the NIF function isn't loaded/implemented
-      kind, reason ->
-        Logger.error("Error calling :termbox2.tb_get_cell(#{x}, #{y}): #{kind} - #{inspect(reason)}")
-        # TODO: Consider mapping specific errors like :undef
-        {:reply, {:error, {:nif_call_failed, kind, reason}}, state}
-    end
+    # The tb_get_cell function is not currently implemented in the termbox2_nif library
+    # Return an appropriate error instead of trying to call the missing function
+    Logger.warning("get_cell(#{x}, #{y}) was called, but :termbox2_nif.tb_get_cell/2 is not implemented")
+    {:reply, {:error, {:not_implemented, "tb_get_cell/2 is not available in the current termbox2_nif version"}}, state}
   end
 
   # Catch-all for unhandled calls

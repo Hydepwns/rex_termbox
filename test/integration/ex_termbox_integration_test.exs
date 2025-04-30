@@ -43,7 +43,7 @@ defmodule ExTermbox.IntegrationTest do
 
   # Test is modified to expect NIF failure until tb_get_cell is implemented
   # @tag :skip
-  test "get_cell fails gracefully when NIF is not implemented" do
+  test "get_cell returns not_implemented error" do
     # We don't need to print anything, just call get_cell on a valid coord
     x_pos = 0
     y_pos = 0
@@ -51,13 +51,12 @@ defmodule ExTermbox.IntegrationTest do
     # Attempt to get the cell content
     result = ExTermbox.get_cell(x_pos, y_pos)
 
-    # Assert that the specific NIF failure error is returned
-    # Example structure: {:error, {:nif_call_failed, :error, {:undef, [{:termbox2, :tb_get_cell, [0, 0], []} | _]}}}
-    assert match?({:error, {:nif_call_failed, :error, {:undef, [{:termbox2, :tb_get_cell, [^x_pos, ^y_pos], []} | _]}}}, result)
+    # Assert that the function returns the appropriate not_implemented error
+    assert match?({:error, {:not_implemented, _}}, result)
 
     # If the test reaches here, it means get_cell returned the expected error pattern.
-    # Once the NIF is implemented, this test *should* fail, and the original
-    # 'prints text and verifies content via get_cell' test (or similar) should be re-enabled.
+    # Once the NIF is implemented, this test *should* fail, and a proper 
+    # test for get_cell functionality should be implemented.
   end
 
   test "gets width and height" do
