@@ -31,7 +31,7 @@ defmodule ExTermbox.Mixfile do
   defp deps do
     [
       # {:termbox2, github: "Hydepwns/termbox2-nif", branch: "master", submodules: true}, # Old Git dependency
-      {:termbox2_nif, "~> 0.1.2"}, # Use the published Hex package
+      {:termbox2_nif, "~> 0.1.3"}, # Use the updated published Hex package
       {:earmark_parser, "~> 1.4"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
