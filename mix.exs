@@ -4,12 +4,9 @@ defmodule ExTermbox.Mixfile do
   def project do
     [
       app: :rrex_termbox,
-      version: "1.1.5",
-      elixir: "~> 1.6",
+      version: "2.0.0-alpha.1",
+      elixir: "~> 1.10",
       start_permanent: Mix.env() == :prod,
-      compilers: [:elixir_make | Mix.compilers()],
-      make_targets: ["all"],
-      make_clean: ["clean"],
       deps: deps(),
       description: description(),
       package: package(),
@@ -33,31 +30,26 @@ defmodule ExTermbox.Mixfile do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:elixir_make, "~> 0.8", runtime: false},
-      {:expty, "~> 0.2"},
+      {:termbox2, github: "Hydepwns/termbox2-nif", branch: "master", submodules: true},
       {:earmark_parser, "~> 1.4"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
-      {:dialyze, "~> 0.2.0", only: :dev},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:mox, "~> 1.0", only: [:dev, :test]}
     ]
   end
 
   defp description do
-    "An Elixir wrapper for the termbox C library using a Port/UDS helper process."
+    "An Elixir wrapper for the termbox2 C library using NIFs via termbox2_nif."
   end
 
   defp package do
     [
       files: ~w(
-        c_src/termbox_port.c
-        c_src/termbox/src/*.{inl,c,h}
-        c_src/termbox/**/wscript
-        c_src/termbox/waf
         lib
-        Makefile
         mix.exs
         README.md
         LICENSE
+        REFACTORING_PLAN.md
       ),
       maintainers: ["DROO AMOR"],
       licenses: ["MIT"],

@@ -7,7 +7,9 @@ defmodule ExTermbox do
   require Logger
   # require ExTermbox.Constants # Alias is enough
   alias ExTermbox.Constants
-  alias ExTermbox.Protocol # Add alias here
+  # Remove unused aliases
+  # alias ExTermbox.Server # Add alias for the GenServer
+  # alias ExTermbox.NIF # Add alias for NIF functions if needed directly (maybe not)
 
   # Define the registry
   # defmodule Registry, do: use(Elixir.Registry, keys: :unique, name: __MODULE__.Registry)
@@ -20,390 +22,449 @@ defmodule ExTermbox do
   # @port_handler_key :ex_termbox_port_handler
 
   @moduledoc """
-  Elixir bindings for the termbox library, providing a way to control the
-  terminal and draw simple UIs.
+  Elixir bindings for the termbox2 library, providing a way to control the
+  terminal and draw simple UIs using Erlang NIFs.
 
-  This module provides the main user-facing API. It interacts with a C process
-  via an Elixir Port managed by the `ExTermbox.PortHandler` GenServer.
+  This module provides the main user-facing API. It interacts with the termbox2
+  NIF functions via the `ExTermbox.Server` GenServer, which must be running.
+
+  ## Architecture
+
+  `ExTermbox` relies on a `GenServer`, typically registered as `ExTermbox.Server`,
+  to manage the lifecycle of the `termbox2` NIF library and handle asynchronous
+  events. Most functions in this module are thin wrappers that send messages
+  (calls or casts) to this server process.
+
+  See `ExTermbox.Server` for implementation details.
 
   ## Usage
 
-  1.  **Initialization:** Call `ExTermbox.init/1` to start the necessary processes.
-      This returns `{:ok, pid}` where `pid` is the handler process.
-      This must be called before any other functions.
-  2.  **API Calls:** Use functions like `change_cell/6`, `clear/1`, etc., passing
-      the `pid` obtained from `init/1` as the first argument.
-  3.  **Display:** Call `ExTermbox.present/1` (passing the `pid`) to flush the
-      back buffer to the terminal screen.
-  4.  **Events:** Call `ExTermbox.poll_event/1` (passing the `pid`) to wait for
-      user input or resize events. These will be sent as messages to the process
-      that called `init/1` (the owner).
-  5.  **Shutdown:** Call `ExTermbox.shutdown/1` (passing the `pid`) when finished
-      to clean up.
+  1.  **Initialization:** Call `ExTermbox.init/1` to start the `ExTermbox.Server`.
+      This calls `tb_init()` via the NIF and registers the calling process
+      as the 'owner' to receive events.
+  2.  **API Calls:** Use functions like `change_cell/5`, `clear/0`, `print/5`, etc.
+      These functions communicate with the running `ExTermbox.Server`.
+  3.  **Display:** Call `ExTermbox.present/0` to synchronize the internal back
+      buffer with the terminal screen.
+  4.  **Events:** The `ExTermbox.Server` automatically polls for terminal events
+      (keyboard, mouse, resize) using `tb_peek_event()` via the NIF. Events are
+      parsed into `%ExTermbox.Event{}` structs and sent as messages in the format
+      `{:termbox_event, event}` to the owner process (the one that called `init/1`).
+      You do not need to manually poll for events.
+  5.  **Shutdown:** Call `ExTermbox.shutdown/0` when finished.
+      This stops the `ExTermbox.Server` gracefully, which in turn calls
+      `tb_shutdown()` via the NIF.
 
   ## Event Handling
 
-  Events are delivered as messages in the format `{:termbox_event, event_map}`
-  to the process that called `init/1`. See `ExTermbox.PortHandler` for details
-  on the event map structure. You typically need to call `poll_event/1` again
-  after receiving an event to wait for the next one.
+  Events are delivered automatically as messages in the format `{:termbox_event, %ExTermbox.Event{}}`
+  to the process that called `init/1`. You should handle these messages in your
+  process's `handle_info/2` callback (if it's a GenServer or similar OTP process).
 
-  Example (`handle_info` in the process that called `init/1`):
+  Example (`handle_info` in the owner process):
 
   ```elixir
+  def handle_info({:termbox_event, %ExTermbox.Event{type: :key, key: :q}}, state) do
+    IO.puts("Quit key pressed!")
+    # Initiate shutdown sequence
+    ExTermbox.shutdown()
+    {:stop, :normal, state}
+  end
+
   def handle_info({:termbox_event, event}, state) do
-    # Assuming handler_pid is stored in state
-    handler_pid = state.handler_pid
     IO.inspect(event, label: "Received Termbox Event")
-    # Request next event, passing the pid
-    ExTermbox.poll_event(handler_pid)
+    # Handle other events (resize, mouse, other keys)
     {:noreply, state}
   end
   ```
   """
 
-  @doc """
-  Initializes the termbox library.
+  # Registered name for the GenServer
+  @server_name ExTermbox.Server
 
-  Starts the PortHandler GenServer.
-  Returns `{:ok, pid}` on success, where `pid` is the PortHandler process ID,
-  or `{:error, reason}` on failure.
+  @doc """
+  Initializes the termbox library by starting the `ExTermbox.Server` GenServer.
+
+  This function attempts to start and link an `ExTermbox.Server` process.
+  The server process, upon its own initialization, will call the underlying
+  `termbox2` NIF function `tb_init()`.
+
+  The calling process is registered as the "owner" of the termbox session and
+  will receive `{:termbox_event, %ExTermbox.Event{}}` messages.
+
+  Returns `{:ok, server_name}` on success, where `server_name` is the atom used
+  to register the GenServer (defaults to `ExTermbox.Server`). Returns `{:error, reason}`
+  if the server cannot be started or if `tb_init()` fails within the server.
+
+  If the server is already running under the specified name, it logs a warning
+  and returns `{:ok, server_name}` without attempting to start a new one.
 
   Options:
-    - `name`: Registers the GenServer under a specific name.
-    - `owner`: Specifies the owner process (defaults to `self()`).
+    - `:name` (atom): The registered name for the `ExTermbox.Server` GenServer.
+      Defaults to `#{inspect(@server_name)}`.
+    - `:owner` (pid): The PID to receive termbox events. Defaults to `self()`.
+      This is typically not overridden directly, as `init/1` sets it.
+    - `:poll_interval_ms` (pos_integer): The interval in milliseconds for polling
+      terminal events via `tb_peek_event`. Defaults to `10`.
+
+  All options are passed down to `ExTermbox.Server.start_link/1`.
   """
-  @spec init(keyword) :: {:ok, pid} | {:error, any}
+  @spec init(keyword) :: {:ok, atom()} | {:error, any}
   def init(opts \\ []) do
-    opts = Keyword.put_new(opts, :owner, self())
-    handler_opts = opts
+    # Ensure the owner is set to the caller
+    init_opts = Keyword.put_new(opts, :owner, self())
+    # Use the default server name unless overridden
+    server_name = Keyword.get(opts, :name, @server_name)
 
-    Logger.debug(
-      "ExTermbox.init starting PortHandler with opts: #{inspect(handler_opts)}"
-    )
+    # Check if the server is already running
+    case GenServer.whereis(server_name) do
+      pid when is_pid(pid) ->
+        # Already started, log and return ok
+        Logger.warning("ExTermbox.Server (#{inspect(server_name)}) already started with PID: #{inspect(pid)}. Returning :ok.")
+        {:ok, server_name}
 
-    case ExTermbox.PortHandler.start_link(handler_opts) do
-      {:ok, pid} ->
-        name_used = Keyword.get(handler_opts, :name)
+      nil ->
+        # Not running, attempt to start
+        # Add the name option for start_link
+        start_opts = Keyword.put(init_opts, :name, server_name)
+
         Logger.debug(
-          "PortHandler started. PID: #{inspect(pid)}, Name: #{inspect(name_used)}. Waiting for initialization..."
+          "ExTermbox.init starting Server (#{inspect(server_name)}) with opts: #{inspect(start_opts)}"
         )
 
-        # Wait for the handler to be fully initialized using recursive check
-        wait_for_init(pid, 100) # Retry 100 times (e.g., 100 * 50ms = 5s)
+        case ExTermbox.Server.start_link(start_opts) do
+          {:ok, _pid} ->
+            # Return the registered name used
+            {:ok, server_name}
 
-      {:error, reason} = error_reply ->
-        Logger.error("PortHandler start_link failed directly: #{inspect(reason)}")
-        error_reply
+          # The :already_started case is now handled by the whereis check above.
+          # We only need to handle other errors.
+          {:error, reason} ->
+            Logger.error("ExTermbox.Server start_link failed: #{inspect(reason)}")
+            {:error, reason}
+        end
     end
   end
 
-  # Recursive helper to wait for :check_init_status to return :ok
-  defp wait_for_init(pid, retries_left) when retries_left > 0 do
-    # Wrap GenServer.call in try/catch
-    try do
-      case GenServer.call(pid, :check_init_status, 500) do # Short timeout for each check
-        :ok ->
-          Logger.debug("PortHandler reported initialized. ExTermbox.init returning {:ok, pid}.")
-          {:ok, pid}
-
-        {:error, :initializing} ->
-          Process.sleep(50) # Wait briefly before retrying
-          wait_for_init(pid, retries_left - 1)
-
-        {:error, reason} -> # Init failed in PortHandler
-          Logger.error(
-            "PortHandler initialization check failed: #{inspect(reason)}. Stopping handler."
-          )
-          GenServer.stop(pid, :shutdown)
-          {:error, {:init_failed, reason}}
-
-        other -> # Unexpected reply
-          Logger.error(
-            "PortHandler initialization check returned unexpected: #{inspect(other)}. Stopping handler."
-          )
-          GenServer.stop(pid, :shutdown)
-          {:error, {:init_failed, {:unexpected_status, other}}}
-      end
-    catch
-      # Catch GenServer.call timeout or exit exceptions
-      type, reason ->
-        Logger.error(
-          "Error calling :check_init_status (Type: #{type}): #{inspect(reason)}. Stopping handler."
-        )
-        # Ensure handler is stopped if call fails
-        _ = GenServer.stop(pid, :shutdown)
-        {:error, {:init_failed, {type, reason}}}
-    end
-  end
-
-  # Base case: Ran out of retries
-  defp wait_for_init(pid, 0) do
-    Logger.error("Timeout waiting for PortHandler initialization after multiple retries.")
-    _ = GenServer.stop(pid, :shutdown)
-    {:error, :init_timeout}
-  end
-
   @doc """
-  Shuts down the termbox library and stops the PortHandler GenServer.
+  Shuts down the termbox library by stopping the `ExTermbox.Server` GenServer.
 
-  Requires the PID or registered name of the PortHandler process.
-  """
-  @spec shutdown(pid | atom) :: :ok | {:error, any}
-  def shutdown(pid_or_name), do: call_genserver(pid_or_name, :request_port_close)
+  This function finds the `ExTermbox.Server` process (using the provided or
+  default name) and requests it to stop gracefully (using `:shutdown`).
 
-  @doc """
-  Returns the width of the terminal.
+  The server's `terminate/2` callback is responsible for calling the `termbox2`
+  NIF function `tb_shutdown()` to restore the terminal state.
 
-  Requires the PID or registered name of the PortHandler process.
-  """
-  @spec width(pid | atom) :: {:ok, non_neg_integer} | {:error, any}
-  def width(pid_or_name) do
-    command_key = :width
-    command_string = ExTermbox.Protocol.format_width_command()
-    call_genserver(pid_or_name, {:command, command_key, command_string})
-  end
-
-  @doc """
-  Returns the height of the terminal.
-
-  Requires the PID or registered name of the PortHandler process.
-  """
-  @spec height(pid | atom) :: {:ok, non_neg_integer} | {:error, any}
-  def height(pid_or_name) do
-    command_key = :height
-    command_string = ExTermbox.Protocol.format_height_command()
-    call_genserver(pid_or_name, {:command, command_key, command_string})
-  end
-
-  # --- BEGIN ADD select_input_mode ---
-  @doc """
-  Selects the input mode.
-
-  Requires the PID or registered name of the PortHandler process.
+  Returns `:ok` if the stop request was sent or if the server was not running.
+  Returns `{:error, reason}` if finding the server process fails unexpectedly.
 
   Arguments:
-    - `pid_or_name`: The PID or registered name of the PortHandler.
-    - `mode`: An atom representing the input mode (e.g., `ExTermbox.Const.Input.ESC`).
+    - `server_name`: The registered name of the server to stop.
+      Defaults to `#{inspect(@server_name)}`.
   """
-  @spec select_input_mode(pid_or_name, atom) :: :ok | {:error, any()}
-  def select_input_mode(pid_or_name, mode) when is_atom(mode) do
+  @spec shutdown(atom) :: :ok | {:error, :unexpected_registry_value}
+  def shutdown(server_name \\ @server_name) do
+    case GenServer.whereis(server_name) do
+      nil ->
+        Logger.warning(
+          "Attempted to shutdown ExTermbox.Server (#{inspect(server_name)}), but it was not running."
+        )
+        # It's already stopped or never started, consider this success.
+        :ok
+
+      pid when is_pid(pid) ->
+        Logger.debug("Stopping ExTermbox.Server (#{inspect(server_name)}) with PID: #{inspect(pid)}")
+        # Use :shutdown reason for graceful termination
+        GenServer.stop(pid, :shutdown)
+        # GenServer.stop is synchronous for the exit signal *sending*,
+        # but doesn't wait for termination. Return :ok as the request was sent.
+        :ok
+
+      other ->
+        # This case should ideally not happen with whereis/1
+        Logger.error(
+          "Found unexpected value for server name #{inspect(server_name)}: #{inspect(other)}. Cannot stop."
+        )
+        {:error, :unexpected_registry_value}
+    end
+  end
+
+  @doc """
+  Returns the width of the terminal by querying the `ExTermbox.Server`.
+
+  The server retrieves this information via the `termbox2` NIF function `tb_width()`.
+
+  Arguments:
+    - `server`: The registered name or PID of the server (defaults to `#{@server_name}`).
+  """
+  @spec width(atom | pid) :: {:ok, non_neg_integer} | {:error, any}
+  def width(server \\ @server_name) do
+    GenServer.call(server, :width)
+  end
+
+  @doc """
+  Returns the height of the terminal by querying the `ExTermbox.Server`.
+
+  The server retrieves this information via the `termbox2` NIF function `tb_height()`.
+
+  Arguments:
+    - `server`: The registered name or PID of the server (defaults to `#{@server_name}`).
+  """
+  @spec height(atom | pid) :: {:ok, non_neg_integer} | {:error, any}
+  def height(server \\ @server_name) do
+    GenServer.call(server, :height)
+  end
+
+  @doc ~S"""
+  Retrieves the character, foreground, and background attributes of a specific cell
+  by querying the `ExTermbox.Server`.
+
+  **Note:** This function currently relies on the `:termbox2.tb_get_cell/2` NIF being
+  implemented in the underlying `termbox2` library fork. If the NIF is not available
+  or not implemented, the `ExTermbox.Server` will return an error like
+  `{:error, :nif_not_loaded}` or `{:error, :function_clause}`.
+
+  Returns `{:ok, {char_codepoint, fg_attribute, bg_attribute}}` on success,
+  or `{:error, reason}` on failure (e.g., NIF not loaded/implemented, invalid coords,
+  GenServer call error).
+
+  Arguments:
+    - `x`: The zero-based column index.
+    - `y`: The zero-based row index.
+    - `server`: The registered name or PID of the server (defaults to `#{inspect(@server_name)}`).
+  """
+  @spec get_cell(integer, integer, atom | pid) :: {:ok, {integer, integer, integer}} | {:error, any}
+  def get_cell(x, y, server \\ @server_name) when is_integer(x) and is_integer(y) do
+    GenServer.call(server, {:get_cell, x, y})
+  end
+
+  @doc ~S"""
+  Selects the input mode by sending a request to the `ExTermbox.Server`.
+
+  The server validates the mode atom against `ExTermbox.Constants.input_mode/1`
+  and then calls the `termbox2` NIF function `tb_set_input_mode()`.
+
+  Arguments:
+    - `mode`: An input mode atom defined in `ExTermbox.Constants` (e.g., `:esc`, `:alt`, `:mouse`).
+    - `server`: The registered name or PID of the server (defaults to `#{inspect(@server_name)}`).
+
+  Returns `:ok` on success, `{:error, :invalid_input_mode}` if the mode atom is
+  unrecognized, or `{:error, reason}` for other GenServer call errors.
+  """
+  @spec select_input_mode(atom, atom | pid) :: :ok | {:error, :invalid_input_mode | any()}
+  def select_input_mode(mode, server \\ @server_name) when is_atom(mode) do
     try do
       mode_int = Constants.input_mode(mode)
-      cmd_payload = Protocol.format_set_input_mode_command(mode_int)
-      call_genserver(pid_or_name, {:command, :set_input_mode, cmd_payload})
+      GenServer.call(server, {:set_input_mode, mode_int})
     catch
       :error, {:key_not_found, _, _} -> {:error, :invalid_input_mode}
-      e -> {:error, {:internal_error, e}}
+      kind, reason -> {:error, {kind, reason}} # Catch GenServer call errors etc.
     end
   end
 
-  # --- END ADD select_input_mode ---
+  @doc ~S"""
+  Clears the internal back buffer by sending a request to the `ExTermbox.Server`.
 
-  # --- Add other functions like clear, present, change_cell, poll_event here ---
-
-  @doc """
-  Clears the terminal buffer using the default colors.
-
-  Requires the PID or registered name of the PortHandler process.
-  """
-  @spec clear(pid | atom) :: :ok | {:error, any}
-  def clear(pid_or_name) do
-    command_key = :clear
-    command_string = ExTermbox.Protocol.format_clear_command()
-    call_genserver(pid_or_name, {:command, command_key, command_string})
-  end
-
-  @doc """
-  Synchronizes the back buffer with the terminal screen.
-
-  Requires the PID or registered name of the PortHandler process.
-  """
-  @spec present(pid | atom) :: :ok | {:error, any}
-  def present(pid_or_name) do
-    command_key = :present
-    command_string = ExTermbox.Protocol.format_present_command()
-    call_genserver(pid_or_name, {:command, command_key, command_string})
-  end
-
-  @doc """
-  Changes the character, foreground, and background attributes of a specific cell.
-
-  Requires the PID or registered name of the PortHandler process.
+  The server calls the `termbox2` NIF function `tb_clear()`.
+  This does not immediately affect the visible terminal; `present/1` must be called
+  to synchronize.
 
   Arguments:
-    - `pid_or_name`: The PID or registered name of the PortHandler.
+    - `server`: The registered name or PID of the server (defaults to `#{inspect(@server_name)}`).
+
+  Returns `:ok` on success or `{:error, reason}` if the GenServer call fails.
+  """
+  @spec clear(atom | pid) :: :ok | {:error, any}
+  def clear(server \\ @server_name) do
+    # Clear is usually fast, cast might be okay, but call ensures completion.
+    GenServer.call(server, :clear)
+  end
+
+  @doc ~S"""
+  Synchronizes the internal back buffer with the terminal screen by sending a
+  request to the `ExTermbox.Server`.
+
+  The server calls the `termbox2` NIF function `tb_present()`.
+
+  Arguments:
+    - `server`: The registered name or PID of the server (defaults to `#{inspect(@server_name)}`).
+
+  Returns `:ok` on success or `{:error, reason}` if the GenServer call fails.
+  """
+  @spec present(atom | pid) :: :ok | {:error, any}
+  def present(server \\ @server_name) do
+    # Present must complete before next draw cycle, so use call.
+    GenServer.call(server, :present)
+  end
+
+  @doc ~S"""
+  Sets the cursor position by sending a request to the `ExTermbox.Server`.
+
+  The server calls the `termbox2` NIF function `tb_set_cursor()`.
+
+  Use `x = -1` and `y = -1` (or the default arguments) to hide the cursor.
+  See `ExTermbox.Constants.hide_cursor/0`.
+
+  Arguments:
+    - `x`: The zero-based column index (-1 to hide).
+    - `y`: The zero-based row index (-1 to hide).
+    - `server`: The registered name or PID of the server (defaults to `#{inspect(@server_name)}`).
+
+  Returns `:ok`. This function uses `GenServer.cast`, so errors during the NIF call
+  will not be reported back directly but may be logged by the server.
+  """
+  @spec set_cursor(integer, integer, atom | pid) :: :ok
+  def set_cursor(x \\ Constants.hide_cursor(), y \\ Constants.hide_cursor(), server \\ @server_name)
+      when is_integer(x) and is_integer(y) do
+    # Setting cursor is quick, cast is likely fine.
+    GenServer.cast(server, {:set_cursor, x, y})
+  end
+
+  @doc ~S"""
+  Changes the character, foreground, and background attributes of a specific cell
+  in the internal back buffer by sending a request to the `ExTermbox.Server`.
+
+  The server calls the `termbox2` NIF function `tb_set_cell()`.
+  This does not immediately affect the visible terminal; `present/1` must be called
+  to synchronize.
+
+  Arguments:
     - `x`: The zero-based column index.
     - `y`: The zero-based row index.
-    - `char`: The character (as a single-char string or integer codepoint).
-    - `fg`: The foreground attribute (e.g., `ExTermbox.Const.Color.RED`).
-    - `bg`: The background attribute (e.g., `ExTermbox.Const.Attribute.BOLD`).
+    - `char`: The character to place in the cell. Can be:
+        - An integer codepoint (e.g., `?a`).
+        - A single-character string (e.g., `"a"`).
+        - A single-codepoint UTF-8 string (e.g., `"€"`).
+    - `fg`: The foreground attribute (an integer constant from `ExTermbox.Constants`).
+      Combine colors (e.g., `Constants.color(:red)`) with attributes
+      (e.g., `Constants.attribute(:bold)`) using bitwise OR (`Bitwise.bor/2`).
+    - `bg`: The background attribute (an integer constant from `ExTermbox.Constants`).
+    - `server`: The registered name or PID of the server (defaults to `#{inspect(@server_name)}`).
+
+  Returns `:ok` if the arguments are valid and the request is sent.
+  Returns `{:error, :invalid_char}` if the `char` argument is not a valid single
+  character representation.
+
+  This function uses `GenServer.cast`, so errors during the NIF call itself
+  will not be reported back directly but may be logged by the server.
   """
-  def change_cell(pid_or_name, x, y, char, fg, bg)
+  @spec change_cell(integer, integer, char | String.t(), integer, integer, atom | pid) :: :ok | {:error, any}
+  def change_cell(x, y, char, fg, bg, server \\ @server_name)
       when is_integer(x) and is_integer(y) and is_integer(fg) and is_integer(bg) do
-    codepoint =
-      if is_integer(char),
-        do: char,
-        else: char |> String.to_charlist() |> List.first()
-
-    # Format using Protocol module
-    command_str =
-      ExTermbox.Protocol.format_change_cell_command(x, y, codepoint, fg, bg)
-
-    # Identify the command by atom/tuple for pending_call matching
-    command_key = :change_cell
-
-    call_genserver(pid_or_name, {:command, command_key, command_str})
-  end
-
-  @doc """
-  Prints a string at the specified position with given attributes.
-
-  Requires the PID or registered name of the PortHandler process.
-
-  Arguments:
-    - `pid_or_name`: The PID or registered name of the PortHandler.
-    - `x`: The zero-based column index for the start of the string.
-    - `y`: The zero-based row index for the start of the string.
-    - `fg`: The foreground attribute (e.g., `ExTermbox.Const.Color.RED`).
-    - `bg`: The background attribute (e.g., `ExTermbox.Const.Attribute.BOLD`).
-    - `string`: The string to print.
-  """
-  @spec print(pid_or_name, integer, integer, atom, atom, String.t()) :: :ok | {:error, any()}
-  def print(pid_or_name, x, y, fg, bg, string) when is_integer(x) and is_integer(y) and is_atom(fg) and is_atom(bg) and is_binary(string) do
-    try do
-      fg_int = Constants.color(fg)
-      bg_int = Constants.color(bg)
-      cmd_payload = Protocol.format_print_command(x, y, fg_int, bg_int, string)
-      call_genserver(pid_or_name, {:command, :print, cmd_payload})
-    catch
-      :error, {:key_not_found, key, _} -> {:error, {:invalid_color, key}}
-      e -> {:error, {:internal_error, e}}
+    # Allow single char string or integer codepoint
+    case p_char_to_codepoint(char) do
+      {:ok, codepoint} ->
+        # Changing a cell is usually part of a batch, cast is appropriate.
+        GenServer.cast(server, {:change_cell, x, y, codepoint, fg, bg})
+      :error ->
+        {:error, :invalid_char}
     end
   end
 
-  @doc """
-  Retrieves the content of a specific cell from the back buffer.
+  # Helper to convert various char inputs to a codepoint
+  defp p_char_to_codepoint(char) when is_integer(char) do
+    {:ok, char}
+  end
 
-  Requires the PID or registered name of the PortHandler process.
+  defp p_char_to_codepoint(char) when is_binary(char) do
+    case :unicode.characters_to_list(char) do
+      [codepoint] -> {:ok, codepoint}
+      _ -> :error # Not a single codepoint string
+    end
+  end
+
+  defp p_char_to_codepoint(_other) do
+    :error
+  end
+
+  @doc ~S"""
+  A convenience function to print a string at a given position with specified attributes.
+
+  This function iterates through the string's characters and calls `change_cell/6`
+  for each one, sending multiple requests to the `ExTermbox.Server`.
+
+  Note: This function assumes a left-to-right character display and does not handle
+  line wrapping or terminal boundaries explicitly. Characters printed beyond the
+  terminal width might be ignored by the underlying `termbox2` library.
 
   Arguments:
-    - `pid_or_name`: The PID or registered name of the PortHandler.
-    - `x`: The zero-based column index.
+    - `x`: The starting zero-based column index.
     - `y`: The zero-based row index.
+    - `fg`: The foreground attribute (integer constant from `ExTermbox.Constants`).
+    - `bg`: The background attribute (integer constant from `ExTermbox.Constants`).
+    - `str`: The string to print.
+    - `server`: The registered name or PID of the server (defaults to `#{inspect(@server_name)}`).
 
-  Returns `{:ok, cell_map}` or `{:error, reason}`.
-  The `cell_map` has keys `:x, :y, :char, :fg, :bg`.
+  Returns `:ok`. Like `change_cell/6`, this uses `GenServer.cast`, so errors during
+  individual NIF calls are not reported directly.
   """
-  @spec get_cell(pid | atom, integer, integer) ::
-          {:ok, map} | {:error, any}
-  def get_cell(pid_or_name, x, y) when is_integer(x) and is_integer(y) do
-    command_key = {:get_cell, x, y}
-    command_string = ExTermbox.Protocol.format_get_cell_command(x, y)
-    call_genserver(pid_or_name, {:command, command_key, command_string})
+  @spec print(integer, integer, integer, integer, String.t(), atom | pid) :: :ok
+  def print(x, y, fg, bg, str, server \\ @server_name)
+      when is_integer(x) and is_integer(y) and is_integer(fg) and is_integer(bg) and is_binary(str) do
+    # Iterate through codepoints and call change_cell for each
+    # Start pipe with the data
+    str
+    |> :unicode.characters_to_list()
+    |> Enum.with_index()
+    |> Enum.each(fn {codepoint, index} ->
+      # We ignore the return value of change_cell (which is just :ok from cast)
+      change_cell(x + index, y, codepoint, fg, bg, server)
+    end)
+    # Since casts are async, we just return :ok immediately assuming they will eventually succeed.
+    :ok
   end
 
-  @doc """
-  Sets the cursor position. Use `(-1, -1)` to hide the cursor.
+  # Event polling functions (poll_event/peek_event) are removed as the
+  # GenServer handles event polling automatically and pushes events to the owner.
 
-  Requires the PID or registered name of the PortHandler process.
+  @doc ~S"""
+  Sets the output mode by sending a request to the `ExTermbox.Server`.
 
-  Arguments:
-    - `pid_or_name`: The PID or registered name of the PortHandler.
-    - `x`: The zero-based column index, or -1 to hide.
-    - `y`: The zero-based row index, or -1 to hide.
-  """
-  @spec set_cursor(pid | atom, integer, integer) :: :ok | {:error, any}
-  def set_cursor(pid_or_name, x, y) when is_integer(x) and is_integer(y) do
-    command_key = :set_cursor
-    command_string = ExTermbox.Protocol.format_set_cursor_command(x, y)
-    call_genserver(pid_or_name, {:command, command_key, command_string})
-  end
-
-  @doc """
-  Selects the output mode.
-
-  Requires the PID or registered name of the PortHandler process.
+  The server validates the mode atom against `ExTermbox.Constants.output_mode/1`
+  and then calls the `termbox2` NIF function `tb_set_output_mode()`.
 
   Arguments:
-    - `pid_or_name`: The PID or registered name of the PortHandler.
-    - `mode`: An atom representing the output mode (e.g., `ExTermbox.Const.OutputMode.C256`).
+    - `mode`: An output mode atom defined in `ExTermbox.Constants` (e.g., `:normal`, `:grayscale`, `:xterm256`).
+    - `server`: The registered name or PID of the server (defaults to `#{inspect(@server_name)}`).
+
+  Returns `:ok` on success, `{:error, :invalid_output_mode}` if the mode atom is
+  unrecognized, or `{:error, reason}` for other GenServer call errors.
   """
-  @spec set_output_mode(pid_or_name, atom) :: :ok | {:error, any()}
-  def set_output_mode(pid_or_name, mode) when is_atom(mode) do
+  @spec set_output_mode(atom, atom | pid) :: :ok | {:error, :invalid_output_mode | any()}
+  def set_output_mode(mode, server \\ @server_name) when is_atom(mode) do
     try do
       mode_int = Constants.output_mode(mode)
-      cmd_payload = Protocol.format_set_output_mode_command(mode_int)
-      call_genserver(pid_or_name, {:command, :set_output_mode, cmd_payload})
+      GenServer.call(server, {:set_output_mode, mode_int})
     catch
       :error, {:key_not_found, _, _} -> {:error, :invalid_output_mode}
-      e -> {:error, {:internal_error, e}}
+      kind, reason -> {:error, {kind, reason}}
     end
   end
 
-  @doc """
-  Sets the default foreground and background attributes used by `clear/1`.
+  @doc ~S"""
+  Sets the clear attributes (foreground and background) used by `clear/1`
+  by sending a request to the `ExTermbox.Server`.
 
-  Requires the PID or registered name of the PortHandler process.
+  The server validates the attributes and calls the `termbox2` NIF function
+  `tb_set_clear_attrs()`.
 
   Arguments:
-    - `pid_or_name`: The PID or registered name of the PortHandler.
-    - `fg`: The foreground attribute.
-    - `bg`: The background attribute.
+    - `fg`: The foreground attribute (an integer constant from `ExTermbox.Constants`).
+    - `bg`: The background attribute (an integer constant from `ExTermbox.Constants`).
+    - `server`: The registered name or PID of the server (defaults to `#{inspect(@server_name)}`).
+
+  Returns `:ok` on success, or `{:error, reason}` if the GenServer call fails.
   """
-  @spec set_clear_attributes(pid_or_name, atom, atom) :: :ok | {:error, any()}
-  def set_clear_attributes(pid_or_name, fg, bg) when is_atom(fg) and is_atom(bg) do
+  @spec set_clear_attributes(integer, integer, atom | pid) :: :ok | {:error, any}
+  def set_clear_attributes(fg, bg, server \\ @server_name) when is_integer(fg) and is_integer(bg) do
     try do
+      # Assuming Constants.color/1 handles colors and attributes
       fg_int = Constants.color(fg)
       bg_int = Constants.color(bg)
-      cmd_payload = Protocol.format_set_clear_attributes_command(fg_int, bg_int)
-      call_genserver(pid_or_name, {:command, :set_clear_attributes, cmd_payload})
+      GenServer.call(server, {:set_clear_attributes, fg_int, bg_int})
     catch
-      :error, {:key_not_found, key, _} -> {:error, {:invalid_color, key}}
-      e -> {:error, {:internal_error, e}}
-    end
-  end
-
-  @doc """
-  Requests the PortHandler to poll for the next event.
-  This is typically called after handling a previous event.
-  The event will be delivered asynchronously to the owning process.
-
-  Requires the PID or registered name of the PortHandler process.
-  """
-  @spec poll_event(pid | atom) :: :ok | {:error, any}
-  def poll_event(pid_or_name) do
-    # This might be better as a cast if no reply is needed?
-    # But a call confirms the command was sent okay.
-    call_genserver(pid_or_name, :trigger_poll_event)
-  end
-
-  @doc """
-  [Debug] Sends a synthetic event for testing purposes.
-
-  Requires the PID or registered name of the PortHandler process.
-  """
-  @spec debug_send_event(
-        pid | atom,
-        atom(), atom(), atom(), integer(), integer(), integer(), integer(), integer()
-      ) :: :ok | {:error, any}
-  def debug_send_event(
-        pid_or_name,
-        type_atom, mod_atom, key_atom, ch \\ 0, w \\ 0, h \\ 0, x \\ 0, y \\ 0
-      ) do
-    # Convert atoms to integers needed by the protocol command string
-    # type_i = Constants.event_type(type_atom) # type_atom is passed directly
-    mod_i = Constants.mod(mod_atom)
-    key_i = Constants.key(key_atom)
-
-    # Protocol formatter expects type as atom, others as integers
-    case Protocol.format_debug_send_event_command(type_atom, mod_i, key_i, ch, w, h, x, y) do
-      {:ok, command_str} ->
-        # ExTermbox.PortHandler.command(pid_or_name, :debug_send_event, command_str)
-        # Send the command via GenServer.call to the PortHandler
-        GenServer.call(pid_or_name, {:command, :debug_send_event, command_str})
-      {:error, reason} ->
-        {:error, reason}
+      :error, {:key_not_found, key, _} -> {:error, {:invalid_color_or_attribute, key}}
+      kind, reason -> {:error, {kind, reason}}
     end
   end
 

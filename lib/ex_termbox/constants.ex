@@ -1,7 +1,10 @@
 defmodule ExTermbox.Constants do
   @moduledoc """
-  Defines constants from the termbox library. These can be used e.g. to set a
-  formatting attributes or to identify keys passed in an event.
+  Defines constants from the termbox2 library. These can be used e.g. to set
+  formatting attributes, colors, input/output modes, or to identify keys passed
+  in an event.
+
+  Values are based on termbox2 v2.5.0 (or compatible).
   """
 
   import Bitwise
@@ -32,14 +35,14 @@ defmodule ExTermbox.Constants do
     arrow_down: 0xFFFF - 19,
     arrow_left: 0xFFFF - 20,
     arrow_right: 0xFFFF - 21,
-    mouse_left: 0xFFFF - 22,
-    mouse_right: 0xFFFF - 23,
-    mouse_middle: 0xFFFF - 24,
-    mouse_release: 0xFFFF - 25,
-    mouse_wheel_up: 0xFFFF - 26,
-    mouse_wheel_down: 0xFFFF - 27,
+    back_tab: 0xFFFF - 22,
+    mouse_left: 0xFFFF - 23,
+    mouse_right: 0xFFFF - 24,
+    mouse_middle: 0xFFFF - 25,
+    mouse_release: 0xFFFF - 26,
+    mouse_wheel_up: 0xFFFF - 27,
+    mouse_wheel_down: 0xFFFF - 28,
     ctrl_tilde: 0x00,
-    # clash with 'CTRL_TILDE'
     ctrl_2: 0x00,
     ctrl_a: 0x01,
     ctrl_b: 0x02,
@@ -49,16 +52,13 @@ defmodule ExTermbox.Constants do
     ctrl_f: 0x06,
     ctrl_g: 0x07,
     backspace: 0x08,
-    # clash with 'CTRL_BACKSPACE'
     ctrl_h: 0x08,
     tab: 0x09,
-    # clash with 'TAB'
     ctrl_i: 0x09,
     ctrl_j: 0x0A,
     ctrl_k: 0x0B,
     ctrl_l: 0x0C,
     enter: 0x0D,
-    # clash with 'ENTER'
     ctrl_m: 0x0D,
     ctrl_n: 0x0E,
     ctrl_o: 0x0F,
@@ -74,25 +74,18 @@ defmodule ExTermbox.Constants do
     ctrl_y: 0x19,
     ctrl_z: 0x1A,
     esc: 0x1B,
-    # clash with 'ESC'
     ctrl_lsq_bracket: 0x1B,
-    # clash with 'ESC'
     ctrl_3: 0x1B,
     ctrl_4: 0x1C,
-    # clash with 'CTRL_4'
     ctrl_backslash: 0x1C,
     ctrl_5: 0x1D,
-    # clash with 'CTRL_5'
     ctrl_rsq_bracket: 0x1D,
     ctrl_6: 0x1E,
     ctrl_7: 0x1F,
-    # clash with 'CTRL_7'
     ctrl_slash: 0x1F,
-    # clash with 'CTRL_7'
     ctrl_underscore: 0x1F,
     space: 0x20,
     backspace2: 0x7F,
-    # clash with 'BACKSPACE2'
     ctrl_8: 0x7F
   }
 
@@ -113,14 +106,21 @@ defmodule ExTermbox.Constants do
   @attributes %{
     bold: 0x0100,
     underline: 0x0200,
-    reverse: 0x0400
+    reverse: 0x0400,
+    italic: 0x0800,
+    blink: 0x1000,
+    hi_black: 0x2000,
+    bright: 0x4000,
+    dim: 0x8000
   }
 
   @type modifier :: constant
   @modifiers %{
-    none: 0, # Added for completeness
+    none: 0,
     alt: 1,
-    motion: 2
+    ctrl: 2,
+    shift: 4,
+    motion: 8
   }
 
   @type event_type :: constant
@@ -132,19 +132,39 @@ defmodule ExTermbox.Constants do
 
   @type error_code :: constant
   @error_codes %{
-    unsupported_terminal: -1,
-    failed_to_open_tty: -2,
-    pipe_trap_error: -3
+    ok: 0,
+    error: -1,
+    need_more: -2,
+    init_already: -3,
+    init_open: -4,
+    mem: -5,
+    no_event: -6,
+    no_term: -7,
+    not_init: -8,
+    out_of_bounds: -9,
+    read: -10,
+    resize_ioctl: -11,
+    resize_pipe: -12,
+    resize_sigaction: -13,
+    poll: -14,
+    tcgetattr: -15,
+    tcsetattr: -16,
+    unsupported_term: -17,
+    resize_write: -18,
+    resize_poll: -19,
+    resize_read: -20,
+    resize_sscanf: -21,
+    cap_collision: -22
   }
 
   @type input_mode :: constant
   @input_modes %{
     current: 0,
     esc: 1,
-    esc_with_mouse: 1 ||| 4,
     alt: 2,
-    alt_with_mouse: 2 ||| 4,
-    mouse: 4
+    mouse: 4,
+    esc_with_mouse: 1 ||| 4,
+    alt_with_mouse: 2 ||| 4
   }
 
   @type output_mode :: constant
@@ -153,14 +173,15 @@ defmodule ExTermbox.Constants do
     normal: 1,
     term_256: 2,
     term_216: 3,
-    grayscale: 4
+    grayscale: 4,
+    truecolor: 5
   }
 
   @type hide_cursor :: constant
   @hide_cursor -1
 
   @doc """
-  Retrieves the mapping of key constants for use with termbox.
+  Retrieves the mapping of key constants for use with termbox2.
 
   These are based on terminfo constants. Note that there's some overlap
   of terminfo values. For example, it's not possible to distinguish between
@@ -178,13 +199,15 @@ defmodule ExTermbox.Constants do
       0x1B
       iex> key(:space)
       0x20
+      iex> key(:back_tab)
+      #{0xFFFF - 22}
 
   """
   @spec key(atom) :: key
   def key(name), do: Map.fetch!(@keys, name)
 
   @doc """
-  Retrieves the mapping of color constants.
+  Retrieves the mapping of color constants (basic 8 colors + default).
   """
   @spec colors() :: %{atom => color}
   def colors, do: @colors
@@ -204,7 +227,7 @@ defmodule ExTermbox.Constants do
   def color(name), do: Map.fetch!(@colors, name)
 
   @doc """
-  Retrieves the mapping of attribute constants.
+  Retrieves the mapping of attribute constants (assuming 16-bit attributes).
   """
   @spec attributes() :: %{atom => attribute}
   def attributes, do: @attributes
@@ -218,6 +241,8 @@ defmodule ExTermbox.Constants do
       0x0100
       iex> attribute(:underline)
       0x0200
+      iex> attribute(:italic)
+      0x0800
 
   """
   @spec attribute(atom) :: attribute
@@ -260,6 +285,10 @@ defmodule ExTermbox.Constants do
       1
       iex> mod(:none)
       0
+      iex> mod(:ctrl)
+      2
+      iex> mod(:motion)
+      8
 
   """
   @spec mod(atom) :: modifier
@@ -276,10 +305,12 @@ defmodule ExTermbox.Constants do
 
   ## Examples
 
-      iex> error_code(:unsupported_terminal)
-      -1
-      iex> error_code(:pipe_trap_error)
-      -3
+      iex> error_code(:unsupported_term)
+      -17
+      iex> error_code(:mem)
+      -5
+      iex> error_code(:ok)
+      0
 
   """
   @spec error_code(atom) :: error_code
@@ -300,6 +331,8 @@ defmodule ExTermbox.Constants do
       1
       iex> input_mode(:mouse)
       4
+      iex> input_mode(:alt_with_mouse)
+      6
 
   """
   @spec input_mode(atom) :: input_mode
@@ -320,6 +353,8 @@ defmodule ExTermbox.Constants do
       1
       iex> output_mode(:term_256)
       2
+      iex> output_mode(:truecolor)
+      5
 
   """
   @spec output_mode(atom) :: output_mode
@@ -340,18 +375,23 @@ defmodule ExTermbox.Constants do
   @doc """
   Resolves a color atom (e.g., :red) or integer to its integer value.
   Returns the default color value if the input is invalid or not found.
+
+  This primarily works for the basic 8 colors defined in `@colors`.
+  For extended color modes (256, truecolor, etc.), pass the integer directly.
+  Attributes can also be passed as integers and will be returned as-is.
   """
+  @spec resolve_color(atom | integer | any) :: integer
   def resolve_color(color_input) when is_atom(color_input) do
-    Map.get(colors(), color_input, colors().default)
+    Map.get(@colors, color_input, @colors.default)
   end
 
   def resolve_color(color_input) when is_integer(color_input) do
-    # Assume integer is already a valid color value (or attribute)
+    # Assume integer is already a valid color value or attribute bitmask
     color_input
   end
 
   def resolve_color(_other) do
     # Fallback for invalid types
-    colors().default
+    @colors.default
   end
 end
