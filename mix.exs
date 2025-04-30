@@ -32,7 +32,8 @@ defmodule ExTermbox.Mixfile do
     [
       # {:termbox2, github: "Hydepwns/termbox2-nif", branch: "master", submodules: true}, # Old Git dependency
       # {:termbox2, "~> 0.1.4"}, # Incorrect Hex package name
-      {:termbox2_nif, "~> 0.1.4", app: :termbox2}, # Specify the underlying app name
+      # {:termbox2_nif, "~> 0.1.4", app: :termbox2}, # Specify the underlying app name - disallowed by hex.publish
+      {:termbox2_nif, "~> 0.1.5"}, # Updated version with matching app and package names
       {:earmark_parser, "~> 1.4"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
