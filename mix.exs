@@ -30,7 +30,8 @@ defmodule ExTermbox.Mixfile do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:termbox2, github: "Hydepwns/termbox2-nif", branch: "master", submodules: true},
+      # {:termbox2, github: "Hydepwns/termbox2-nif", branch: "master", submodules: true}, # Old Git dependency
+      {:termbox2_nif, "~> 0.1.2"}, # Use the published Hex package
       {:earmark_parser, "~> 1.4"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
