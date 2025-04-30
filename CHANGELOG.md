@@ -10,6 +10,12 @@ Inshalla, this is the last time I'll have to do this.
 - Investigate and fix warnings about potentially unreachable clauses (`{:parse_error, ...}`, `{:unknown_line, ...}`) in `ExTermbox.PortHandler.SocketHandler.process_socket_line/3`, possibly due to incomplete return types from `ExTermbox.Protocol.parse_socket_line/1`.
 - Enhance example tests (`test/integration/examples_test.exs`) to verify visual output or behavior beyond just startup.
 
+## [1.1.4] - 2025-04-30
+
+### Fixed
+
+- Ensured the patched `waf` utility script (`waflib/Utils.py`) is correctly included in the Hex package by updating the `files` list in `mix.exs`. This resolves the build failure reported in `v1.1.3` where the Python 3.9+ compatibility fix was not being applied during dependency compilation.
+
 ## [1.1.3] - 2025-04-30
 
 ### Fixed
