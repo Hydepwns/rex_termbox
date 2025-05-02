@@ -6,7 +6,13 @@ Inshalla, this is the last time I'll have to do this.
 
 *No changes yet.*
 
-## [2.0.1] - 2023-06-12
+## [2.0.2] - YYYY-MM-DD
+
+### Fixed
+
+- Prevent infinite warning loop in `ExTermbox.Server` when `tb_peek_event` NIF returns `{-6, 0, 0, 0}`. The server now specifically handles this tuple as a polling error, logs a warning, and uses a slightly longer interval (`@poll_error_interval_ms`) before rescheduling the poll to avoid log spam and reduce load during persistent errors.
+
+## [2.0.1] - 2024-07-29
 
 ### Fixed
 

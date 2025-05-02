@@ -219,14 +219,14 @@ defmodule ExTermbox do
   Retrieves the character, foreground, and background attributes of a specific cell
   by querying the `ExTermbox.Server`.
 
-  **Note:** This function currently relies on the `:termbox2.tb_get_cell/2` NIF being
-  implemented in the underlying `termbox2` library fork. If the NIF is not available
-  or not implemented, the `ExTermbox.Server` will return an error like
-  `{:error, :nif_not_loaded}` or `{:error, :function_clause}`.
+  **Note:** This function is not currently implemented in v2.0.0. The underlying
+  `tb_get_cell/2` function is not available in the current termbox2_nif version.
+  Calls will return `{:error, {:not_implemented, "..."}}`.
+  
+  This feature may be added in a future version when the NIF library is updated.
 
   Returns `{:ok, {char_codepoint, fg_attribute, bg_attribute}}` on success,
-  or `{:error, reason}` on failure (e.g., NIF not loaded/implemented, invalid coords,
-  GenServer call error).
+  or `{:error, reason}` on failure.
 
   Arguments:
     - `x`: The zero-based column index.

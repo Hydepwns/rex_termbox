@@ -12,6 +12,10 @@ defmodule ExTermbox.Server do
 
   # TODO: Make poll interval configurable
   @poll_interval_ms 10
+  # Add a slightly longer interval for rescheduling after errors to avoid spamming
+  @poll_error_interval_ms 50
+
+  defstruct owner: nil
 
   # --- Client API ---
 
@@ -67,47 +71,54 @@ defmodule ExTermbox.Server do
 
   @impl true
   def handle_info(:poll_events, state) do
-    # Poll for an event using the NIF
-    poll_result = :termbox2.tb_peek_event(@poll_interval_ms)
-    # Fetch constants before the case
-    no_event_code = Constants.error_code(:no_event)
-    ok_code = Constants.error_code(:ok)
+    # Timeout value passed to tb_peek_event.
+    # We use a short timeout (0ms) because we rely on Process.send_after for polling interval.
+    peek_timeout_ms = 0
+    ok_code = Constants.error_code(:ok) # Typically 0
 
-    case poll_result do
-      # --- Event Received --- #
-      # NIF Format assumption: {type_int, mod_int, key_int, ch_int, w_int, h_int, x_int, y_int}
-      {type_int, _, _, _, _, _, _, _} = event_tuple when type_int > 0 ->
-        p_parse_and_send_event(event_tuple, state)
+    # Variable to hold the reschedule interval, defaults to normal
+    reschedule_interval = @poll_interval_ms
 
-      # --- No Event --- #
-      # Check against pre-fetched codes
-      ^no_event_code ->
-        :ok # Do nothing, just reschedule
+    case :termbox2.tb_peek_event(peek_timeout_ms) do
+      # --- Normal Event --- #
+      {:ok, {type_int, mod_int, key_int, ch_int, w_int, h_int, x_int, y_int}} ->
+        p_parse_and_send_event({type_int, mod_int, key_int, ch_int, w_int, h_int, x_int, y_int}, state)
+        # Keep normal interval
 
-      # TB_OK (0) might also mean no event, handle explicitly if needed
+      # --- Timeout (No Event) --- #
       ^ok_code ->
-         :ok # No event, just reschedule
+         :ok # No event, just reschedule with normal interval
 
-      # --- Error --- #
+      # --- Specific Unexpected Format from NIF --- #
+      # Handle the specific {-6, 0, 0, 0} tuple causing the infinite loop.
+      # This seems to be how the NIF reports certain errors (e.g., TB_ERR_POLL?).
+      {-6, 0, 0, 0} ->
+        Logger.warning("Termbox event polling received specific error tuple {-6, 0, 0, 0}. Possible TB_ERR_POLL?")
+        # Use error interval for rescheduling
+        reschedule_interval = @poll_error_interval_ms
+
+      # --- General Error --- #
       # Map specific error codes if needed
       error_code when is_integer(error_code) and error_code < 0 ->
         error_atom =
           Constants.error_codes()
-          |> Enum.find(fn {_k, v} -> v == error_code end)
-          |> elem(0)
-          || :unknown_error_code
+          |> Enum.find_value(:unknown_error_code, fn {k, v} -> if v == error_code, do: k end)
 
-        # Log polling errors, but continue polling for now.
+        # Log polling errors, but continue polling.
         # TB_ERR_POLL (-14) is common if interrupted by resize signal.
         Logger.warning("Termbox event polling error: #{error_atom} (#{error_code})")
+        # Use error interval for rescheduling
+        reschedule_interval = @poll_error_interval_ms
 
-      # --- Unexpected --- #
+      # --- Other Unexpected --- #
       other ->
         Logger.warning("Unexpected return format from :termbox2.tb_peek_event: #{inspect(other)}")
+        # Use error interval for rescheduling
+        reschedule_interval = @poll_error_interval_ms
     end
 
-    # Schedule the next poll
-    Process.send_after(self(), :poll_events, @poll_interval_ms)
+    # Schedule the next poll using the determined interval
+    Process.send_after(self(), :poll_events, reschedule_interval)
     {:noreply, state}
   end
 
