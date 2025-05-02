@@ -6,6 +6,12 @@ Inshalla, this is the last time I'll have to do this.
 
 *No changes yet.*
 
+## [2.0.3] - YYYY-MM-DD
+
+### Fixed
+
+- Silence compiler warnings about unused `reschedule_interval` variable in `ExTermbox.Server` event polling logic.
+
 ## [2.0.2] - YYYY-MM-DD
 
 ### Fixed

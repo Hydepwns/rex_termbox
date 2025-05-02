@@ -94,8 +94,8 @@ defmodule ExTermbox.Server do
       # This seems to be how the NIF reports certain errors (e.g., TB_ERR_POLL?).
       {-6, 0, 0, 0} ->
         Logger.warning("Termbox event polling received specific error tuple {-6, 0, 0, 0}. Possible TB_ERR_POLL?")
-        # Use error interval for rescheduling
-        reschedule_interval = @poll_error_interval_ms
+        # Use error interval for rescheduling - Assign but prefix with _ as it's only used after the case
+        _reschedule_interval = reschedule_interval = @poll_error_interval_ms
 
       # --- General Error --- #
       # Map specific error codes if needed
@@ -107,14 +107,14 @@ defmodule ExTermbox.Server do
         # Log polling errors, but continue polling.
         # TB_ERR_POLL (-14) is common if interrupted by resize signal.
         Logger.warning("Termbox event polling error: #{error_atom} (#{error_code})")
-        # Use error interval for rescheduling
-        reschedule_interval = @poll_error_interval_ms
+        # Use error interval for rescheduling - Assign but prefix with _
+        _reschedule_interval = reschedule_interval = @poll_error_interval_ms
 
       # --- Other Unexpected --- #
       other ->
         Logger.warning("Unexpected return format from :termbox2.tb_peek_event: #{inspect(other)}")
-        # Use error interval for rescheduling
-        reschedule_interval = @poll_error_interval_ms
+        # Use error interval for rescheduling - Assign but prefix with _
+        _reschedule_interval = reschedule_interval = @poll_error_interval_ms
     end
 
     # Schedule the next poll using the determined interval
