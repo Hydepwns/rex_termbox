@@ -6,6 +6,12 @@ Inshalla, this is the last time I'll have to do this.
 
 *No changes yet.*
 
+## [2.0.4] - YYYY-MM-DD
+
+### Fixed
+
+- Refactored `ExTermbox.Server` event polling logic to avoid compiler warnings about unused variables by having the `case` statement directly return the appropriate reschedule interval.
+
 ## [2.0.3] - YYYY-MM-DD
 
 ### Fixed
