@@ -6,9 +6,6 @@ defmodule ExTermbox.IntegrationTest do
   # or run via `mix test --include integration`
   @moduletag :integration
 
-  alias ExTermbox.Constants
-  alias ExTermbox.Event
-
   setup do
     # Ensure the test process is the owner and receives events
     opts = [owner: self()]

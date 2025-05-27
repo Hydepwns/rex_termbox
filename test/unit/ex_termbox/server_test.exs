@@ -5,9 +5,9 @@ defmodule ExTermbox.ServerTest do
   import Mox
 
   # Alias commonly used modules
-  alias ExTermbox.Server
-  alias ExTermbox.Event
-  alias ExTermbox.Constants
+  # alias ExTermbox.Server
+  # alias ExTermbox.Event
+  # alias ExTermbox.Constants
 
   # Define a behavior for the Termbox2 functions we want to mock
   defmodule Termbox2Behaviour do
@@ -27,7 +27,7 @@ defmodule ExTermbox.ServerTest do
   # For now, we'll just document this limitation
   setup do
     # Store the original module
-    original_termbox2 = :termbox2
+    _original_termbox2 = :termbox2
     
     # Replace the module in the Server module's context
     # This approach assumes the Server uses :termbox2 directly
