@@ -27,3 +27,9 @@ erl_crash.dump
 
 # Debugging artifacts
 DEBUG_SUMMARY.md
+
+# Ignore object and shared library files in c_src and subdirectories
+c_src/**/*.o
+c_src/**/*.so*
+c_src/**/*.dll
+c_src/**/*.dylib
