@@ -60,10 +60,12 @@ endif
 C_SRC_DIR = $(CURDIR)
 C_SRC_OUTPUT ?= $(CURDIR)/../priv/$(PROJECT).$(SO_EXTENSION)
 
-TERMBOX2_SRC_DIR = $(C_SRC_DIR)/termbox2/src
+# TERMBOX2_SRC_DIR = $(C_SRC_DIR)/termbox2/src
+# TERMBOX_SOURCES := $(wildcard $(TERMBOX2_SRC_DIR)/*.c) $(wildcard $(TERMBOX2_SRC_DIR)/*.C) $(wildcard $(TERMBOX2_SRC_DIR)/*.cc) $(wildcard $(TERMBOX2_SRC_DIR)/*.cpp)
+SOURCES := $(NIF_SOURCES)
 
-CFLAGS += -fPIC -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR) -I $(ERL_INCLUDE) -I $(TERMBOX2_SRC_DIR)
-CXXFLAGS += -fPIC -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR) -I $(TERMBOX2_SRC_DIR)
+CFLAGS += -fPIC -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR) -I $(ERL_INCLUDE)
+CXXFLAGS += -fPIC -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR)
 
 ifeq ($(OS),Windows_NT)
   LDLIBS :=
@@ -83,8 +85,6 @@ link_verbose_0 = @echo " LD    " $(@F);
 link_verbose = $(link_verbose_$(V))
 
 NIF_SOURCES := $(wildcard $(C_SRC_DIR)/*.c) $(wildcard $(C_SRC_DIR)/*.C) $(wildcard $(C_SRC_DIR)/*.cc) $(wildcard $(C_SRC_DIR)/*.cpp)
-TERMBOX_SOURCES := $(wildcard $(TERMBOX2_SRC_DIR)/*.c) $(wildcard $(TERMBOX2_SRC_DIR)/*.C) $(wildcard $(TERMBOX2_SRC_DIR)/*.cc) $(wildcard $(TERMBOX2_SRC_DIR)/*.cpp)
-SOURCES := $(NIF_SOURCES) $(TERMBOX_SOURCES)
 
 OBJECTS = $(addsuffix .o, $(basename $(notdir $(SOURCES))))
 OBJ_DIR = $(CURDIR)/obj
@@ -102,9 +102,9 @@ $(OBJ_DIR)/%.o: $(C_SRC_DIR)/%.c
 	@mkdir -p $(OBJ_DIR)
 	$(COMPILE_C) $(OUTPUT_OPTION) $< -o $@
 
-$(OBJ_DIR)/%.o: $(TERMBOX2_SRC_DIR)/%.c
-	@mkdir -p $(OBJ_DIR)
-	$(COMPILE_C) $(OUTPUT_OPTION) $< -o $@
+# $(OBJ_DIR)/%.o: $(TERMBOX2_SRC_DIR)/%.c
+# 	@mkdir -p $(OBJ_DIR)
+# 	$(COMPILE_C) $(OUTPUT_OPTION) $< -o $@
 
 # Add rules for C++ if needed, copying the pattern above
 
