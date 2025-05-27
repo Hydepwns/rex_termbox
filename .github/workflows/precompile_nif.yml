@@ -23,10 +23,22 @@ jobs:
             target: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v4
-      - uses: erlef/setup-beam@v1
+
+      # Linux and Windows: use erlef/setup-beam
+      - name: Setup BEAM (Linux/Windows)
+        if: matrix.os != 'macos-latest'
+        uses: erlef/setup-beam@v1
         with:
           elixir-version: '1.16'
           otp-version: '26.2'
+
+      # macOS: install Elixir and Erlang manually
+      - name: Install Elixir and Erlang (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew update
+          brew install erlang elixir
+
       - name: Install build tools (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y build-essential erlang-dev
@@ -36,21 +48,6 @@ jobs:
       - name: Install MinGW (Windows)
         if: matrix.os == 'windows-latest'
         run: choco install mingw
-      - name: Install Xcode Command Line Tools (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          xcode-select --install || echo "Xcode tools already installed"
-      - name: Install gcc (macOS)
-        if: matrix.os == 'macos-latest'
-        run: brew install gcc
-      - name: Print build environment (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          which cc
-          which gcc
-          cc --version
-          gcc --version
-          make --version
       - name: Compile Elixir and NIF
         run: mix deps.get && mix compile && mix compile.nif
       - name: Find compiled NIF
