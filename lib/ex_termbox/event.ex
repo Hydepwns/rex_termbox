@@ -20,8 +20,8 @@ defmodule ExTermbox.Event do
   """
   @type t :: %__MODULE__{
     type: atom(), # :key | :resize | :mouse | etc.
-    mod: atom() | integer() | nil, # TODO: Finalize type based on NIF/mapping
-    key: atom() | integer() | nil, # TODO: Finalize type based on NIF/mapping
+    mod: atom() | nil,
+    key: atom() | nil,
     ch: integer() | nil,
     w: integer() | nil,
     h: integer() | nil,

@@ -24,7 +24,9 @@ defmodule ExTermbox.Mixfile do
 
   # Run "mix help compile.app" to learn about applications.
   def application do
-    [extra_applications: [:logger]]
+    [
+      extra_applications: [:logger, :httpoison]
+    ]
   end
 
   # Run "mix help deps" to learn about dependencies.
@@ -37,7 +39,9 @@ defmodule ExTermbox.Mixfile do
       {:earmark_parser, "~> 1.4"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:mox, "~> 1.0", only: [:dev, :test]}
+      {:mox, "~> 1.0", only: [:dev, :test]},
+      {:httpoison, "~> 1.8"},
+      {:jason, "~> 1.2"}
     ]
   end
 

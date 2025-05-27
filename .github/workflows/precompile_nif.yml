@@ -1,0 +1,67 @@
+name: Precompile NIFs and Upload
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build NIF (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.16'
+          otp-version: '26.2'
+      - name: Install build tools (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+      - name: Install build tools (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: brew install coreutils
+      - name: Install build tools (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install make
+      - name: Compile NIF
+        run: mix deps.get && mix compile
+      - name: Find compiled NIF
+        id: find_nif
+        shell: bash
+        run: |
+          NIF_PATH=$(find _build -name '*.so' -o -name '*.dylib' -o -name '*.dll' | head -n1)
+          echo "nif_path=$NIF_PATH" >> $GITHUB_OUTPUT
+      - name: Rename NIF for Release Asset
+        id: rename_nif
+        shell: bash
+        run: |
+          NIF_FILE="${{ steps.find_nif.outputs.nif_path }}"
+          EXT="${NIF_FILE##*.}"
+          case $EXT in
+            dll) OUT="rrex_termbox_nif-${{ matrix.target }}.dll" ;;
+            dylib) OUT="rrex_termbox_nif-${{ matrix.target }}.dylib" ;;
+            so) OUT="rrex_termbox_nif-${{ matrix.target }}.so" ;;
+            *) OUT="rrex_termbox_nif-${{ matrix.target }}.bin" ;;
+          esac
+          cp "$NIF_FILE" "$OUT"
+          echo "out_name=$OUT" >> $GITHUB_OUTPUT
+      - name: Upload NIF to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.rename_nif.outputs.out_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

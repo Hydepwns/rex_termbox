@@ -5,14 +5,13 @@ defmodule ExTermbox.Server do
   use GenServer
 
   require Logger
+  require ExTermbox.NIFLoader
 
   # Import Constants for easier access
   alias ExTermbox.Constants
   alias ExTermbox.Event # Add alias for the Event struct
 
-  # TODO: Make poll interval configurable
-  @poll_interval_ms 10
-  # Add a slightly longer interval for rescheduling after errors to avoid spamming
+  @default_poll_interval_ms 10
   @poll_error_interval_ms 50
 
   defstruct owner: nil
@@ -30,7 +29,11 @@ defmodule ExTermbox.Server do
 
   @impl true
   def init(opts) do
+    # Ensure NIF is loaded at runtime, after all apps are started
+    ExTermbox.NIFLoader.load_nif()
+
     owner_pid = Keyword.fetch!(opts, :owner)
+    poll_interval_ms = Keyword.get(opts, :poll_interval_ms, @default_poll_interval_ms)
 
     Logger.debug("Initializing Termbox via :termbox2.tb_init()...")
 
@@ -45,7 +48,7 @@ defmodule ExTermbox.Server do
         Logger.debug("Termbox initialized successfully.")
         # Start the event polling loop
         send(self(), :poll_events)
-        {:ok, %{owner: owner_pid}}
+        {:ok, %{owner: owner_pid, poll_interval_ms: poll_interval_ms}}
 
       # Handle potential error tuples (NIF might return this?)
       {:error, reason} ->
@@ -75,6 +78,7 @@ defmodule ExTermbox.Server do
     # We use a short timeout (0ms) because we rely on Process.send_after for polling interval.
     peek_timeout_ms = 0
     ok_code = Constants.error_code(:ok) # Typically 0
+    poll_interval_ms = Map.get(state, :poll_interval_ms, @default_poll_interval_ms)
 
     # Determine the reschedule interval based on the poll result
     reschedule_interval = 
@@ -82,12 +86,12 @@ defmodule ExTermbox.Server do
         # --- Normal Event --- #
         {:ok, {type_int, mod_int, key_int, ch_int, w_int, h_int, x_int, y_int}} ->
           p_parse_and_send_event({type_int, mod_int, key_int, ch_int, w_int, h_int, x_int, y_int}, state)
-          @poll_interval_ms # Return normal interval
+          poll_interval_ms # Return normal interval
 
         # --- Timeout (No Event) --- #
         ^ok_code ->
            :ok # Side effect: none
-           @poll_interval_ms # Return normal interval
+           poll_interval_ms # Return normal interval
 
         # --- Specific Unexpected Format from NIF --- #
         {-6, 0, 0, 0} ->

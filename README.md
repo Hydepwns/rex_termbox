@@ -163,6 +163,21 @@ Mix should handle fetching the dependency and compiling the NIFs automatically w
 
 If you encounter build issues, ensure your build tools are installed and check the `termbox2` dependency's documentation or repository for any specific requirements.
 
+## NIF Precompilation and Auto-Download
+
+Starting with version 2.0.4, `rrex_termbox` will automatically download the correct precompiled NIF binary for your platform from the latest GitHub Release if it is not already present in the `priv/` directory. This means:
+
+- **No manual build is required** for supported platforms (Linux x86_64, macOS x86_64/aarch64, Windows x86_64).
+- On first use, the library will fetch the appropriate binary and place it in the correct location.
+- If the download fails (e.g., no network, unsupported platform, or missing asset), a clear error will be raised with troubleshooting instructions.
+- If you are on an unsupported platform or want to build from source, you can still do so by following the instructions in the `termbox2` NIF dependency.
+
+This workflow requires network access the first time you use the library on a new platform or after clearing the `priv/` directory.
+
+### Dependencies
+
+The auto-download feature uses [`httpoison`](https://hex.pm/packages/httpoison) and [`jason`](https://hex.pm/packages/jason) for HTTP requests and JSON parsing. These are included as dependencies in `mix.exs`.
+
 ## Distribution
 
 Building standalone releases for applications using `rrex_termbox` (and its underlying NIF dependency) should work with standard Elixir **[Releases](https://hexdocs.pm/mix/Mix.Tasks.Release.html)**. The build process compiles the NIFs into a shared object file (`.so` or `.dylib`) located in the `priv/` directory of the dependency (`termbox2`). Releases are designed to package these `priv/` artifacts correctly.
