@@ -11,7 +11,7 @@ defmodule ExTermbox.Mixfile do
       description: description(),
       package: package(),
       aliases: aliases(),
-      compilers: [:elixir, :app],
+      compilers: [:elixir, :app, :nif],
 
       # Docs
       name: "ExTermbox",
