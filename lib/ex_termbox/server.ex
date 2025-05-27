@@ -16,6 +16,21 @@ defmodule ExTermbox.Server do
 
   defstruct owner: nil
 
+  @compile {:no_warn_undefined, [
+    {:termbox2, :tb_width, 0},
+    {:termbox2, :tb_height, 0},
+    {:termbox2, :tb_clear, 0},
+    {:termbox2, :tb_present, 0},
+    {:termbox2, :tb_set_cell, 5},
+    {:termbox2, :tb_set_cursor, 2},
+    {:termbox2, :tb_set_clear_attrs, 2},
+    {:termbox2, :tb_set_input_mode, 1},
+    {:termbox2, :tb_set_output_mode, 1},
+    {:termbox2, :tb_peek_event, 1},
+    {:termbox2, :tb_shutdown, 0},
+    {:termbox2, :tb_init, 0}
+  ]}
+
   # --- Client API ---
 
   def start_link(opts) do
