@@ -51,7 +51,24 @@ jobs:
       - name: Add MinGW to PATH (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+      - name: Install MSYS2 (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install msys2
+      - name: Add MSYS2 to PATH (Windows)
+        if: matrix.os == 'windows-latest'
+        run: echo "C:\tools\msys64\usr\bin" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+      - name: Print environment (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          where make
+          where gcc
+          echo $PATH
+          gcc --version
+          make --version
+          ls -la c_src
       - name: Compile Elixir and NIF
+        shell: bash
         run: mix deps.get && mix compile && make -C c_src V=1
       - name: Find compiled NIF
         id: find_nif
