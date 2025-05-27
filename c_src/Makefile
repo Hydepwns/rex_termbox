@@ -96,11 +96,21 @@ $(info NIF_SOURCES: $(NIF_SOURCES))
 $(info SOURCES: $(SOURCES))
 $(info OBJECT_FILES: $(OBJECT_FILES))
 
+# Delegate to c_src if make is run from the project root
+ifeq ($(CURDIR),$(abspath $(dir $(lastword $(MAKEFILE_LIST)))))
+# We're in c_src, do nothing
+else
+all:
+	$(MAKE) -C c_src
+clean:
+	$(MAKE) -C c_src clean
+endif
+
 $(C_SRC_OUTPUT): $(OBJECT_FILES)
 	@mkdir -p $(BASEDIR)/priv/
 	$(link_verbose) $(CC) $(OBJECT_FILES) $(LDFLAGS) $(LDLIBS) -o $(C_SRC_OUTPUT)
 
-$(OBJ_DIR)/%.o: $(C_SRC_DIR)/%.c
+$(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(OBJ_DIR)
 	$(COMPILE_C) $(OUTPUT_OPTION) $< -o $@
 
@@ -109,8 +119,3 @@ $(OBJ_DIR)/%.o: $(C_SRC_DIR)/%.c
 # 	$(COMPILE_C) $(OUTPUT_OPTION) $< -o $@
 
 # Add rules for C++ if needed, copying the pattern above
-
-clean:
-	@rm -f $(C_SRC_OUTPUT)
-	@rm -f $(OBJECT_FILES)
-	@rm -rf $(OBJ_DIR)
