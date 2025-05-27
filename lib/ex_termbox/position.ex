@@ -20,10 +20,10 @@ defmodule ExTermbox.Position do
 
   ## Examples
 
-      iex> translate(%Position{x: 0, y: 0}, 1, 2)
-      %Position{x: 1, y: 2}
-      iex> translate(%Position{x: 10, y: 0}, -1, 0)
-      %Position{x: 9, y: 0}
+      iex> ExTermbox.Position.translate(%ExTermbox.Position{x: 0, y: 0}, 1, 2)
+      %ExTermbox.Position{x: 1, y: 2}
+      iex> ExTermbox.Position.translate(%ExTermbox.Position{x: 10, y: 0}, -1, 0)
+      %ExTermbox.Position{x: 9, y: 0}
 
   """
   @spec translate(t, integer, integer) :: t
@@ -37,10 +37,10 @@ defmodule ExTermbox.Position do
 
   ## Examples
 
-      iex> translate_x(%Position{x: 0, y: 0}, 2)
-      %Position{x: 2, y: 0}
-      iex> translate_x(%Position{x: 2, y: 0}, -1)
-      %Position{x: 1, y: 0}
+      iex> ExTermbox.Position.translate_x(%ExTermbox.Position{x: 0, y: 0}, 2)
+      %ExTermbox.Position{x: 2, y: 0}
+      iex> ExTermbox.Position.translate_x(%ExTermbox.Position{x: 2, y: 0}, -1)
+      %ExTermbox.Position{x: 1, y: 0}
 
   """
   @spec translate_x(t, integer) :: t
@@ -53,10 +53,10 @@ defmodule ExTermbox.Position do
 
   ## Examples
 
-      iex> translate_y(%Position{x: 0, y: 0}, 2)
-      %Position{x: 0, y: 2}
-      iex> translate_y(%Position{x: 0, y: 2}, -1)
-      %Position{x: 0, y: 1}
+      iex> ExTermbox.Position.translate_y(%ExTermbox.Position{x: 0, y: 0}, 2)
+      %ExTermbox.Position{x: 0, y: 2}
+      iex> ExTermbox.Position.translate_y(%ExTermbox.Position{x: 0, y: 2}, -1)
+      %ExTermbox.Position{x: 0, y: 1}
 
   """
   @spec translate_y(t, integer) :: t
