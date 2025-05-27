@@ -42,6 +42,11 @@ else ifeq ($(UNAME_SYS), Linux)
 	SO_EXTENSION ?= so
 endif
 
+# Patch: Use gcc on Windows (MSYS/MinGW/Cygwin)
+ifeq ($(OS),Windows_NT)
+	CC := gcc
+endif
+
 C_SRC_DIR = $(CURDIR)
 C_SRC_OUTPUT ?= $(CURDIR)/../priv/$(PROJECT).$(SO_EXTENSION)
 

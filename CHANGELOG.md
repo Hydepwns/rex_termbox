@@ -6,7 +6,14 @@ Inshalla, this is the last time I'll have to do this.
 
 *No changes yet.*
 
-## [2.0.4] - YYYY-MM-DD
+## [2.0.6] - 2025-05-27
+
+### Fixed
+
+- Updated CI workflow to add MinGW to PATH on Windows, ensuring gcc is available for NIF compilation.
+- Patched `c_src/Makefile` to use `gcc` instead of `cc` when building on Windows (`OS=Windows_NT`), fixing build failures due to missing `cc`.
+
+## [2.0.5] - 2025-05-20
 
 ### Fixed
 
