@@ -12,13 +12,21 @@ BASEDIR := $(abspath $(CURDIR)/..)
 PROJECT ?= $(notdir $(BASEDIR))
 PROJECT := $(strip $(PROJECT))
 
-ERTS_INCLUDE_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts/erts-~ts/include/\", [code:root_dir(), erlang:system_info(version)])." -s init stop)
-ERL_INTERFACE_INCLUDE_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts\", [code:lib_dir(erl_interface, include)])." -s init stop)
-ERL_INTERFACE_LIB_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts\", [code:lib_dir(erl_interface, lib)])." -s init stop)
+ifeq ($(OS),Windows_NT)
+  # Set these to empty or to reasonable defaults for Windows
+  ERTS_INCLUDE_DIR :=
+  ERL_INTERFACE_INCLUDE_DIR :=
+  ERL_INTERFACE_LIB_DIR :=
+  ERL_INCLUDE :=
+  ERL_LIB :=
+else
+  ERTS_INCLUDE_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts/erts-~ts/include/\", [code:root_dir(), erlang:system_info(version)])." -s init stop)
+  ERL_INTERFACE_INCLUDE_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts\", [code:lib_dir(erl_interface, include)])." -s init stop)
+  ERL_INTERFACE_LIB_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts\", [code:lib_dir(erl_interface, lib)])." -s init stop)
 
-ERL_INCLUDE ?= $(shell  erl -noshell -eval "io:format(\"~ts/~s\", [filename:dirname(code:lib_dir()), \"usr/include/\"])." -s init stop) 
-ERL_LIB ?= $(shell  erl -noshell -eval "io:format(\"~ts\", [code:lib_dir()])." -s init stop) 
-
+  ERL_INCLUDE ?= $(shell  erl -noshell -eval "io:format(\"~ts/~s\", [filename:dirname(code:lib_dir()), \"usr/include/\"])." -s init stop) 
+  ERL_LIB ?= $(shell  erl -noshell -eval "io:format(\"~ts\", [code:lib_dir()])." -s init stop) 
+endif
 
 # System type and C compiler/flags.
 
