@@ -52,7 +52,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
       - name: Compile Elixir and NIF
-        run: mix deps.get && mix compile && mix compile.nif
+        run: mix deps.get && mix compile && make -C c_src V=1
       - name: Find compiled NIF
         id: find_nif
         shell: bash
