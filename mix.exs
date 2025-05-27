@@ -89,6 +89,8 @@ defmodule ExTermbox.Mixfile do
         {"x86_64-pc-windows-msvc", "dll"}
     end
     nif_name = "rrex_termbox_nif-#{arch}.#{ext}"
+    # Ensure priv directory exists
+    File.mkdir_p!("priv")
     # Run make in c_src
     System.cmd("make", [], cd: "c_src")
     # Find the built NIF (first .so/.dylib/.dll in priv)
@@ -106,6 +108,8 @@ defmodule ExTermbox.Mixfile do
 
   defp clean_nif(_) do
     IO.puts("==> Cleaning NIF build artifacts...")
+    # Ensure priv directory exists
+    File.mkdir_p!("priv")
     # Remove all NIF binaries from priv/
     File.ls!("priv")
     |> Enum.filter(fn f -> String.starts_with?(f, "rrex_termbox") and (String.ends_with?(f, ".so") or String.ends_with?(f, ".dylib") or String.ends_with?(f, ".dll")) end)
