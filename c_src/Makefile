@@ -93,6 +93,9 @@ OBJECT_FILES = $(addprefix $(OBJ_DIR)/, $(OBJECTS))
 COMPILE_C = $(c_verbose) $(CC) $(CFLAGS) $(CPPFLAGS) -c
 COMPILE_CPP = $(cpp_verbose) $(CXX) $(CXXFLAGS) $(CPPFLAGS) -c 
 
+$(info NIF_SOURCES: $(NIF_SOURCES))
+$(info SOURCES: $(SOURCES))
+$(info OBJECT_FILES: $(OBJECT_FILES))
 
 $(C_SRC_OUTPUT): $(OBJECT_FILES)
 	@mkdir -p $(BASEDIR)/priv/
