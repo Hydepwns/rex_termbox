@@ -17,6 +17,8 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
@@ -29,6 +31,12 @@ jobs:
       - name: Install build tools (Windows)
         if: matrix.os == 'windows-latest'
         run: choco install make
+      - name: Install MinGW (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install mingw
+      - name: Install build tools (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install make
       - name: Compile Elixir and NIF
         run: mix deps.get && mix compile && mix compile.nif
       - name: Find compiled NIF
