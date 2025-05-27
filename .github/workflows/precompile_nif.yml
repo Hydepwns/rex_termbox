@@ -15,10 +15,6 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: macos-latest
-            target: x86_64-apple-darwin
-          - os: macos-latest
-            target: aarch64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
     steps:
@@ -30,9 +26,6 @@ jobs:
       - name: Install build tools (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y build-essential
-      - name: Install build tools (macOS)
-        if: startsWith(matrix.os, 'macos')
-        run: brew install coreutils
       - name: Install build tools (Windows)
         if: matrix.os == 'windows-latest'
         run: choco install make
