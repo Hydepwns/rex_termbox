@@ -11,6 +11,7 @@ defmodule ExTermbox.Mixfile do
       description: description(),
       package: package(),
       aliases: aliases(),
+      compilers: [:elixir, :app],
 
       # Docs
       name: "ExTermbox",
@@ -35,7 +36,7 @@ defmodule ExTermbox.Mixfile do
       # {:termbox2, github: "Hydepwns/termbox2-nif", branch: "master", submodules: true}, # Old Git dependency
       # {:termbox2, "~> 0.1.4"}, # Incorrect Hex package name
       # {:termbox2_nif, "~> 0.1.4", app: :termbox2}, # Specify the underlying app name - disallowed by hex.publish
-      {:termbox2_nif, "~> 0.1.5"}, # Updated version with matching app and package names
+      # {:termbox2_nif, "~> 0.1.5"}, # Updated version with matching app and package names
       {:earmark_parser, "~> 1.4"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
@@ -66,7 +67,46 @@ defmodule ExTermbox.Mixfile do
   defp aliases do
     [
       test: "test --exclude integration",
-      "test.integration": "test --only integration"
+      "test.integration": "test --only integration",
+      "compile.nif": &compile_nif/1,
+      "clean.nif": &clean_nif/1
     ]
+  end
+
+  defp compile_nif(_) do
+    IO.puts("==> Building NIF in c_src via Makefile...")
+    {arch, ext} = case :os.type() do
+      {:unix, :darwin} ->
+        arch = to_string(:erlang.system_info(:system_architecture))
+        if String.contains?(arch, "arm") or String.contains?(arch, "aarch64") do
+          {"aarch64-apple-darwin", "dylib"}
+        else
+          {"x86_64-apple-darwin", "dylib"}
+        end
+      {:unix, :linux} ->
+        {"x86_64-unknown-linux-gnu", "so"}
+      {:win32, _} ->
+        {"x86_64-pc-windows-msvc", "dll"}
+    end
+    nif_name = "rrex_termbox_nif-#{arch}.#{ext}"
+    # Run make in c_src
+    System.cmd("make", [], cd: "c_src")
+    # Find the built NIF (first .so/.dylib/.dll in priv)
+    built_nif =
+      File.ls!("priv")
+      |> Enum.find(fn f -> String.starts_with?(f, "rrex_termbox.") and (String.ends_with?(f, ".so") or String.ends_with?(f, ".dylib") or String.ends_with?(f, ".dll")) end)
+    File.cp!(Path.join("priv", built_nif), Path.join("priv", nif_name))
+    IO.puts("==> NIF built and copied to priv/#{nif_name}")
+  end
+
+  defp clean_nif(_) do
+    IO.puts("==> Cleaning NIF build artifacts...")
+    # Remove all NIF binaries from priv/
+    File.ls!("priv")
+    |> Enum.filter(fn f -> String.starts_with?(f, "rrex_termbox") and (String.ends_with?(f, ".so") or String.ends_with?(f, ".dylib") or String.ends_with?(f, ".dll")) end)
+    |> Enum.each(fn f -> File.rm!(Path.join("priv", f)) end)
+    # Run make clean in c_src
+    System.cmd("make", ["clean"], cd: "c_src")
+    IO.puts("==> NIF artifacts cleaned.")
   end
 end
