@@ -35,11 +35,11 @@ jobs:
         id: find_nif
         shell: bash
         run: |
-          NIF_PATH=$(find _build -name '*.so' -o -name '*.dylib' -o -name '*.dll' | head -n1)
+          NIF_PATH=$(find priv -name '*.so' -o -name '*.dylib' -o -name '*.dll' | head -n1)
           echo "NIF_PATH is: $NIF_PATH"
           if [ -z "$NIF_PATH" ]; then
             echo "ERROR: No compiled NIF file found!" >&2
-            find _build
+            find priv
             exit 1
           fi
           echo "nif_path=$NIF_PATH" >> $GITHUB_OUTPUT
