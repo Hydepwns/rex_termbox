@@ -42,9 +42,11 @@ else ifeq ($(UNAME_SYS), Linux)
 	SO_EXTENSION ?= so
 endif
 
-# Patch: Use gcc on Windows (MSYS/MinGW/Cygwin)
+# Patch: Use gcc and correct flags for DLL on Windows (MSYS/MinGW/Cygwin)
 ifeq ($(OS),Windows_NT)
 	CC := gcc
+	LDFLAGS := -shared
+	SO_EXTENSION := dll
 endif
 
 C_SRC_DIR = $(CURDIR)
