@@ -98,10 +98,14 @@ $(info OBJECT_FILES: $(OBJECT_FILES))
 
 # Delegate to c_src if make is run from the project root
 C_SRC_ABS := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+ifeq ($(CURDIR),$(C_SRC_ABS))
+# We are in c_src, do nothing special
+else
 all:
 	$(MAKE) -C $(C_SRC_ABS)
 clean:
 	$(MAKE) -C $(C_SRC_ABS) clean
+endif
 
 $(C_SRC_OUTPUT): $(OBJECT_FILES)
 	@mkdir -p $(BASEDIR)/priv/
