@@ -95,8 +95,13 @@ defmodule ExTermbox.Mixfile do
     built_nif =
       File.ls!("priv")
       |> Enum.find(fn f -> String.starts_with?(f, "rrex_termbox.") and (String.ends_with?(f, ".so") or String.ends_with?(f, ".dylib") or String.ends_with?(f, ".dll")) end)
-    File.cp!(Path.join("priv", built_nif), Path.join("priv", nif_name))
-    IO.puts("==> NIF built and copied to priv/#{nif_name}")
+
+    if built_nif do
+      File.cp!(Path.join("priv", built_nif), Path.join("priv", nif_name))
+      IO.puts("==> NIF built and copied to priv/#{nif_name}")
+    else
+      Mix.raise("NIF build failed: no NIF binary found in priv/")
+    end
   end
 
   defp clean_nif(_) do
