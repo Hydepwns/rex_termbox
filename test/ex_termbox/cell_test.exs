@@ -1,7 +1,9 @@
 defmodule ExTermbox.CellTest do
   use ExUnit.Case, async: true
 
-  alias ExTermbox.{Cell, Constants, Position}
+  alias ExTermbox.Cell
+  alias ExTermbox.Position
+  alias ExTermbox.Constants
 
   test "it supports creating a cell struct" do
     cell = %Cell{position: %Position{x: 0, y: 1}, ch: ?a, bg: 0x00, fg: 0x01}
