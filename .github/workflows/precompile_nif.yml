@@ -25,7 +25,7 @@ jobs:
           otp-version: '26.2'
       - name: Install build tools (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y build-essential
+        run: sudo apt-get update && sudo apt-get install -y build-essential erlang-dev
       - name: Install build tools (Windows)
         if: matrix.os == 'windows-latest'
         run: choco install make
@@ -36,6 +36,12 @@ jobs:
         shell: bash
         run: |
           NIF_PATH=$(find _build -name '*.so' -o -name '*.dylib' -o -name '*.dll' | head -n1)
+          echo "NIF_PATH is: $NIF_PATH"
+          if [ -z "$NIF_PATH" ]; then
+            echo "ERROR: No compiled NIF file found!" >&2
+            find _build
+            exit 1
+          fi
           echo "nif_path=$NIF_PATH" >> $GITHUB_OUTPUT
       - name: Rename NIF for Release Asset
         id: rename_nif
