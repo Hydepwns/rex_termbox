@@ -62,6 +62,7 @@ C_SRC_OUTPUT ?= $(CURDIR)/../priv/$(PROJECT).$(SO_EXTENSION)
 
 # TERMBOX2_SRC_DIR = $(C_SRC_DIR)/termbox2/src
 # TERMBOX_SOURCES := $(wildcard $(TERMBOX2_SRC_DIR)/*.c) $(wildcard $(TERMBOX2_SRC_DIR)/*.C) $(wildcard $(TERMBOX2_SRC_DIR)/*.cc) $(wildcard $(TERMBOX2_SRC_DIR)/*.cpp)
+NIF_SOURCES := $(C_SRC_DIR)/termbox2_nif.c
 SOURCES := $(NIF_SOURCES)
 
 CFLAGS += -fPIC -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR) -I $(ERL_INCLUDE)
@@ -83,8 +84,6 @@ cpp_verbose = $(cpp_verbose_$(V))
 
 link_verbose_0 = @echo " LD    " $(@F);
 link_verbose = $(link_verbose_$(V))
-
-NIF_SOURCES := $(wildcard $(C_SRC_DIR)/*.c) $(wildcard $(C_SRC_DIR)/*.C) $(wildcard $(C_SRC_DIR)/*.cc) $(wildcard $(C_SRC_DIR)/*.cpp)
 
 OBJECTS = $(addsuffix .o, $(basename $(notdir $(SOURCES))))
 OBJ_DIR = $(CURDIR)/obj
